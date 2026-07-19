@@ -1,17 +1,32 @@
-# timiq
+# TimIQ
 
-A new Flutter project.
+TimIQ je osobní offline-first aplikace pro evidenci skutečně stráveného času.
+Jedním klepnutím spustí aktivitu a klepnutím na jinou ji atomicky přepne.
 
-## Getting Started
+## Architektura
 
-This project is a starting point for a Flutter application.
+- `lib/domain` – modely, výpočty statistik a timeline
+- `lib/data` – verzovaná SQLite databáze a repository
+- `lib/application` – jediný controller/use-case pro timer, CRUD a export
+- `lib/presentation` – české obrazovky a vlastní TimIQ komponenty
+- `lib/platform` – kanál pro synchronizaci s Androidem
+- `android/app/src/main/kotlin/app/timiq` – widgety, notifikace a přímé
+  transakční akce mimo Flutter UI
 
-A few resources to get you started if this is your first Flutter project:
+Databáze `timiq.db` používá cizí klíče, WAL, indexy pro časové dotazy a
+částečný unikátní index, který dovolí nejvýše jeden záznam s `end_time IS NULL`.
+Schéma se při upgradu nikdy automaticky nemaže.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Lokální ověření
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Po změně závislostí spusťte v kořeni projektu:
+
+```powershell
+flutter pub get
+flutter analyze
+flutter test
+flutter run
+```
+
+Pro instalaci widgetů použijte nabídku widgetů Android launcheru. Notifikační
+oprávnění se na Androidu 13+ vyžádá při prvním spuštění měření.

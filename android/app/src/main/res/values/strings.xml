@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TimIQ</string>
+    <string name="widget_small_description">TimIQ – právě měřená aktivita</string>
+    <string name="widget_medium_description">TimIQ – měření a oblíbené aktivity</string>
+    <string name="widget_large_description">TimIQ – dnešní oblíbené aktivity</string>
+</resources>
