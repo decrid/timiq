@@ -9,7 +9,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.os.Build
+import android.util.Log
 import android.widget.RemoteViews
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,6 +21,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 object PlatformSync {
+    private const val TAG = "TimIQ.Platform"
     private const val PREFS = "timiq_platform"
     private const val KEY_ACTIVE = "active"
     private const val KEY_FAVORITES = "favorites"
@@ -25,16 +29,15 @@ object PlatformSync {
     private const val NOTIFICATION_ID = 8100
 
     fun saveFlutterPayload(context: Context, payload: Map<String, Any?>) {
-        val active = (payload["active"] as? Map<*, *>)?.let(::mapToJson)
         val favorites = JSONArray()
         (payload["favorites"] as? List<*>)?.forEach { item ->
             (item as? Map<*, *>)?.let { favorites.put(mapToJson(it)) }
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_ACTIVE, active?.toString())
             .putString(KEY_FAVORITES, favorites.toString())
-            .apply()
+            .commit()
+        refreshActiveFromDatabase(context)
     }
 
     fun setActive(context: Context, active: JSONObject?) {
@@ -48,19 +51,64 @@ object PlatformSync {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_ACTIVE, null)
             ?: return null
-        return runCatching { JSONObject(raw) }.getOrNull()
+        return try {
+            JSONObject(raw)
+        } catch (error: Exception) {
+            Log.e(TAG, "Invalid cached active timer payload", error)
+            null
+        }
     }
 
     fun favorites(context: Context): JSONArray {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_FAVORITES, "[]")
             ?: "[]"
-        return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
+        return try {
+            JSONArray(raw)
+        } catch (error: Exception) {
+            Log.e(TAG, "Invalid cached favorites payload", error)
+            JSONArray()
+        }
     }
 
-    fun updateFavoriteTotals(context: Context) {
+    fun refreshActiveFromDatabase(context: Context): Boolean {
         val databaseFile = context.getDatabasePath("timiq.db")
-        if (!databaseFile.exists()) return
+        if (!databaseFile.exists()) {
+            setActive(context, null)
+            return true
+        }
+        var active: JSONObject? = null
+        val success = withDatabase(context, writable = false) { db ->
+            db.rawQuery(
+                """
+                SELECT e.id, a.id, a.name, c.name,
+                       COALESCE(a.custom_color_value, c.color_value), e.start_time
+                FROM time_entries e
+                INNER JOIN activities a ON a.id = e.activity_id
+                INNER JOIN categories c ON c.id = a.category_id
+                WHERE e.end_time IS NULL
+                LIMIT 1
+                """.trimIndent(),
+                null,
+            ).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    active = JSONObject()
+                        .put("entryId", cursor.getString(0))
+                        .put("activityId", cursor.getString(1))
+                        .put("activityName", cursor.getString(2))
+                        .put("categoryName", cursor.getString(3))
+                        .put("color", cursor.getInt(4))
+                        .put("startTime", cursor.getLong(5))
+                }
+            }
+        }
+        if (success) setActive(context, active)
+        return success
+    }
+
+    fun updateFavoriteTotals(context: Context): Boolean {
+        val databaseFile = context.getDatabasePath("timiq.db")
+        if (!databaseFile.exists()) return false
         val values = favorites(context)
         val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -69,45 +117,44 @@ object PlatformSync {
             set(Calendar.MILLISECOND, 0)
         }
         val dayStart = calendar.timeInMillis
-        val dayEnd = dayStart + 24L * 60L * 60L * 1000L
+        val dayEnd = (calendar.clone() as Calendar).apply {
+            add(Calendar.DAY_OF_MONTH, 1)
+        }.timeInMillis
         val now = System.currentTimeMillis()
-        runCatching {
-            android.database.sqlite.SQLiteDatabase.openDatabase(
-                databaseFile.absolutePath,
-                null,
-                android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
-            ).use { db ->
-                for (index in 0 until values.length()) {
-                    val item = values.optJSONObject(index) ?: continue
-                    val activityId = item.optString("activityId")
-                    var total = 0L
-                    db.query(
-                        "time_entries",
-                        arrayOf("start_time", "end_time"),
-                        "activity_id = ? AND start_time < ? " +
-                            "AND (end_time IS NULL OR end_time > ?)",
-                        arrayOf(activityId, dayEnd.toString(), dayStart.toString()),
-                        null,
-                        null,
-                        null,
-                    ).use { cursor ->
-                        while (cursor.moveToNext()) {
-                            val start = cursor.getLong(0)
-                            val end = if (cursor.isNull(1)) now else cursor.getLong(1)
-                            total += max(
-                                0L,
-                                min(end, dayEnd) - max(start, dayStart),
-                            )
-                        }
+        val success = withDatabase(context, writable = false) { db ->
+            for (index in 0 until values.length()) {
+                val item = values.optJSONObject(index) ?: continue
+                val activityId = item.optString("activityId")
+                var total = 0L
+                db.query(
+                    "time_entries",
+                    arrayOf("start_time", "end_time"),
+                    "activity_id = ? AND start_time < ? " +
+                        "AND (end_time IS NULL OR end_time > ?)",
+                    arrayOf(activityId, dayEnd.toString(), dayStart.toString()),
+                    null,
+                    null,
+                    null,
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val start = cursor.getLong(0)
+                        val end = if (cursor.isNull(1)) now else cursor.getLong(1)
+                        total += max(
+                            0L,
+                            min(end, dayEnd) - max(start, dayStart),
+                        )
                     }
-                    item.put("trackedToday", total)
                 }
+                item.put("trackedToday", total)
             }
+        }
+        if (success) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_FAVORITES, values.toString())
-                .apply()
+                .commit()
         }
+        return success
     }
 
     fun refreshSurfaces(context: Context) {
@@ -316,6 +363,41 @@ object PlatformSync {
         val hours = minutes / 60L
         val rest = minutes % 60L
         return if (hours > 0) "$hours h ${rest} min" else "$minutes min"
+    }
+
+    internal fun withDatabase(
+        context: Context,
+        writable: Boolean,
+        action: (SQLiteDatabase) -> Unit,
+    ): Boolean {
+        val file = context.getDatabasePath("timiq.db")
+        if (!file.exists()) {
+            Log.w(TAG, "TimIQ database does not exist yet")
+            return false
+        }
+        repeat(3) { attempt ->
+            try {
+                val flags = if (writable) {
+                    SQLiteDatabase.OPEN_READWRITE
+                } else {
+                    SQLiteDatabase.OPEN_READONLY
+                }
+                SQLiteDatabase.openDatabase(file.absolutePath, null, flags)
+                    .use(action)
+                return true
+            } catch (error: SQLiteException) {
+                if (attempt == 2) {
+                    Log.e(TAG, "SQLite operation failed after retries", error)
+                    return false
+                }
+                Log.w(TAG, "SQLite temporarily unavailable; retrying", error)
+                Thread.sleep(40L * (attempt + 1))
+            } catch (error: Exception) {
+                Log.e(TAG, "Native TimIQ database operation failed", error)
+                return false
+            }
+        }
+        return false
     }
 }
 

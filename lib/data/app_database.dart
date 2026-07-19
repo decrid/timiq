@@ -7,6 +7,8 @@ class AppDatabase {
   static const String fileName = 'timiq.db';
   static const int schemaVersion = 1;
   static Database? _database;
+  static final Map<int, Future<void> Function(Database)> _migrations =
+      <int, Future<void> Function(Database)>{};
 
   static Future<Database> open() async {
     final existing = _database;
@@ -121,10 +123,11 @@ class AppDatabase {
     // Migrations are deliberately additive. Never use a destructive fallback:
     // user history must survive every ordinary application upgrade.
     for (var version = oldVersion + 1; version <= newVersion; version++) {
-      switch (version) {
-        default:
-          throw StateError('Chybí migrace databáze na verzi $version.');
+      final migration = _migrations[version];
+      if (migration == null) {
+        throw StateError('Chybí migrace databáze na verzi $version.');
       }
+      await migration(db);
     }
   }
 }

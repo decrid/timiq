@@ -79,10 +79,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               padding: const EdgeInsets.only(bottom: TimiqSpace.lg),
               buildDefaultDragHandles: false,
               itemCount: items.length,
-              onReorder: (oldIndex, newIndex) async {
+              onReorderItem: (oldIndex, newIndex) async {
                 if (_showArchived) return;
                 final reordered = [...items];
-                if (newIndex > oldIndex) newIndex--;
                 final moved = reordered.removeAt(oldIndex);
                 reordered.insert(newIndex, moved);
                 await controller.reorderCategoryIds(
@@ -253,10 +252,9 @@ class _ActivityManagementScreenState extends State<ActivityManagementScreen> {
               padding: const EdgeInsets.only(bottom: TimiqSpace.lg),
               buildDefaultDragHandles: false,
               itemCount: items.length,
-              onReorder: (oldIndex, newIndex) async {
+              onReorderItem: (oldIndex, newIndex) async {
                 if (_showArchived) return;
                 final reordered = [...items];
-                if (newIndex > oldIndex) newIndex--;
                 final moved = reordered.removeAt(oldIndex);
                 reordered.insert(newIndex, moved);
                 await controller.reorderActivityIds(
@@ -474,7 +472,7 @@ class TagManagementScreen extends StatelessWidget {
           : ListView.separated(
               padding: const EdgeInsets.only(bottom: TimiqSpace.lg),
               itemCount: controller.tags.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const SizedBox(height: TimiqSpace.xs),
               itemBuilder: (context, index) {
                 final tag = controller.tags[index];

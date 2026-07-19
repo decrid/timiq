@@ -121,6 +121,22 @@ class SqliteTimiqRepository implements TimiqRepository {
     DateTime end, {
     String? excludingId,
   }) async {
+    final rows = await _conflictRows(
+      _database,
+      start,
+      end,
+      excludingId: excludingId,
+    );
+    final entries = rows.map(_entryFromMap).toList(growable: false);
+    return entries.map(OverlapConflict.new).toList(growable: false);
+  }
+
+  Future<List<Map<String, Object?>>> _conflictRows(
+    DatabaseExecutor executor,
+    DateTime start,
+    DateTime end, {
+    String? excludingId,
+  }) {
     final clauses = <String>[
       'start_time < ?',
       '(end_time IS NULL OR end_time > ?)',
@@ -133,14 +149,12 @@ class SqliteTimiqRepository implements TimiqRepository {
       clauses.add('id != ?');
       args.add(excludingId);
     }
-    final rows = await _database.query(
+    return executor.query(
       'time_entries',
       where: clauses.join(' AND '),
       whereArgs: args,
       orderBy: 'start_time ASC',
     );
-    final entries = rows.map(_entryFromMap).toList(growable: false);
-    return entries.map(OverlapConflict.new).toList(growable: false);
   }
 
   @override
@@ -322,17 +336,44 @@ class SqliteTimiqRepository implements TimiqRepository {
         'Konec záznamu musí být později než začátek.',
       );
     }
-    final conflicts = await findConflicts(
-      entry.startTime,
-      end,
-      excludingId: entry.id,
-    );
-    if (conflicts.isNotEmpty) {
-      throw const TimiqValidationException(
-        'Zadaný čas se překrývá s jiným záznamem.',
-      );
-    }
     await _database.transaction((txn) async {
+      final activity = await txn.query(
+        'activities',
+        columns: const <String>['id'],
+        where: 'id = ?',
+        whereArgs: <Object>[entry.activityId],
+        limit: 1,
+      );
+      if (activity.isEmpty) {
+        throw const TimiqValidationException(
+          'Vybraná aktivita neexistuje.',
+        );
+      }
+      final conflicts = await _conflictRows(
+        txn,
+        entry.startTime,
+        end,
+        excludingId: entry.id,
+      );
+      if (conflicts.isNotEmpty) {
+        throw const TimiqValidationException(
+          'Zadaný čas se překrývá s jiným záznamem.',
+        );
+      }
+      final uniqueTagIds = entry.tagIds.toSet();
+      if (uniqueTagIds.isNotEmpty) {
+        final placeholders =
+            List<String>.filled(uniqueTagIds.length, '?').join(',');
+        final existingTags = await txn.rawQuery(
+          'SELECT id FROM tags WHERE id IN ($placeholders)',
+          uniqueTagIds.toList(growable: false),
+        );
+        if (existingTags.length != uniqueTagIds.length) {
+          throw const TimiqValidationException(
+            'Některý z vybraných štítků už neexistuje.',
+          );
+        }
+      }
       final values = _entryToMap(entry);
       final updated = await txn.update(
         'time_entries',
@@ -346,7 +387,7 @@ class SqliteTimiqRepository implements TimiqRepository {
         where: 'time_entry_id = ?',
         whereArgs: <Object>[entry.id],
       );
-      for (final tagId in entry.tagIds.toSet()) {
+      for (final tagId in uniqueTagIds) {
         await txn.insert(
           'time_entry_tags',
           <String, Object?>{
@@ -420,17 +461,15 @@ class SqliteTimiqRepository implements TimiqRepository {
     final tags = await _database.query('tags');
     final joins = await _database.query('time_entry_tags');
     final settings = await _database.query('app_settings');
-    return <String, Object?>{
-      'format': 'timiq-backup',
-      'version': 1,
-      'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'categories': categories,
-      'activities': activities,
-      'timeEntries': entries,
-      'tags': tags,
-      'timeEntryTags': joins,
-      'settings': settings,
-    };
+    return buildBackupPayload(
+      categories: categories,
+      activities: activities,
+      timeEntries: entries,
+      tags: tags,
+      timeEntryTags: joins,
+      settings: settings,
+      exportedAt: DateTime.now(),
+    );
   }
 
   Future<List<TimeEntry>> _entriesWithTags(
@@ -557,3 +596,24 @@ Map<String, Object?> _tagToMap(TimiqTag value) => <String, Object?>{
 
 String prettyJson(Map<String, Object?> value) =>
     const JsonEncoder.withIndent('  ').convert(value);
+
+Map<String, Object?> buildBackupPayload({
+  required List<Map<String, Object?>> categories,
+  required List<Map<String, Object?>> activities,
+  required List<Map<String, Object?>> timeEntries,
+  required List<Map<String, Object?>> tags,
+  required List<Map<String, Object?>> timeEntryTags,
+  required List<Map<String, Object?>> settings,
+  required DateTime exportedAt,
+}) =>
+    <String, Object?>{
+      'format': 'timiq-backup',
+      'version': 1,
+      'exportedAt': exportedAt.toUtc().toIso8601String(),
+      'categories': categories,
+      'activities': activities,
+      'timeEntries': timeEntries,
+      'tags': tags,
+      'timeEntryTags': timeEntryTags,
+      'settings': settings,
+    };

@@ -13,15 +13,13 @@ import '../platform/platform_bridge.dart';
 
 class TimiqController extends ChangeNotifier {
   TimiqController({
-    required TimiqRepository repository,
-    PlatformBridge platformBridge = const PlatformBridge(),
+    required this.repository,
+    this.platformBridge = const PlatformBridge(),
     DateTime Function()? clock,
-  })  : _repository = repository,
-        _platformBridge = platformBridge,
-        _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now;
 
-  final TimiqRepository _repository;
-  final PlatformBridge _platformBridge;
+  final TimiqRepository repository;
+  final PlatformBridge platformBridge;
   final DateTime Function() _clock;
   final StatisticsCalculator _statisticsCalculator =
       const StatisticsCalculator();
@@ -162,14 +160,31 @@ class TimiqController extends ChangeNotifier {
   }
 
   List<CategoryTotal> get todayCategoryTotals {
+    final nowValue = now;
+    final range = DateRange(startOfDay(nowValue), endOfDay(nowValue));
+    final byActivity = <String, Duration>{};
+    for (final entry in todayEntries) {
+      final duration = clippedDuration(
+        entry.startTime,
+        entry.endTime,
+        range,
+        nowValue,
+      );
+      if (duration == Duration.zero) continue;
+      byActivity[entry.activityId] =
+          (byActivity[entry.activityId] ?? Duration.zero) + duration;
+    }
     final byCategory = <String, List<ActivityTotal>>{};
-    for (final item in activityDeck) {
-      if (item.trackedToday == Duration.zero) continue;
-      byCategory.putIfAbsent(item.category.id, () => <ActivityTotal>[]).add(
+    for (final item in byActivity.entries) {
+      final activity = activityById(item.key);
+      if (activity == null) continue;
+      final category = categoryById(activity.categoryId);
+      if (category == null) continue;
+      byCategory.putIfAbsent(category.id, () => <ActivityTotal>[]).add(
             ActivityTotal(
-              activity: item.activity,
-              category: item.category,
-              duration: item.trackedToday,
+              activity: activity,
+              category: category,
+              duration: item.value,
             ),
           );
     }
@@ -196,11 +211,11 @@ class TimiqController extends ChangeNotifier {
 
   Future<void> initialize() async {
     try {
-      await _repository.initialize();
-      settings = await _repository.loadSettings();
+      await repository.initialize();
+      settings = await repository.loadSettings();
       await refresh(notify: false);
       isInitialized = true;
-      await _syncPlatform();
+      await _syncPlatformBestEffort();
     } catch (error) {
       fatalError =
           'TimIQ se nepodařilo bezpečně otevřít. Vaše data nebyla smazána.';
@@ -210,13 +225,13 @@ class TimiqController extends ChangeNotifier {
   }
 
   Future<void> refresh({bool notify = true}) async {
-    categories = await _repository.loadCategories();
-    activities = await _repository.loadActivities();
-    tags = await _repository.loadTags();
-    activeEntry = await _repository.loadActiveEntry();
-    recentEntries = await _repository.loadRecentEntries();
+    categories = await repository.loadCategories();
+    activities = await repository.loadActivities();
+    tags = await repository.loadTags();
+    activeEntry = await repository.loadActiveEntry();
+    recentEntries = await repository.loadRecentEntries();
     final nowValue = now;
-    todayEntries = await _repository.loadEntries(
+    todayEntries = await repository.loadEntries(
       DateRange(startOfDay(nowValue), endOfDay(nowValue)),
     );
     revision++;
@@ -226,7 +241,7 @@ class TimiqController extends ChangeNotifier {
   Future<void> refreshAfterResume() async {
     try {
       await refresh();
-      await _syncPlatform();
+      await _syncPlatformBestEffort();
     } catch (error) {
       debugPrint('TimIQ resume refresh failed: $error');
     }
@@ -238,7 +253,7 @@ class TimiqController extends ChangeNotifier {
         await _createStarterSet();
       }
       settings = settings.copyWith(onboardingCompleted: true);
-      await _repository.saveSettings(settings);
+      await repository.saveSettings(settings);
     });
   }
 
@@ -292,7 +307,7 @@ class TimiqController extends ChangeNotifier {
         categoryIndex++) {
       final definition = definitions[categoryIndex];
       final categoryId = newId('category');
-      await _repository.saveCategory(
+      await repository.saveCategory(
         TimiqCategory(
           id: categoryId,
           name: definition.category,
@@ -307,7 +322,7 @@ class TimiqController extends ChangeNotifier {
       for (var activityIndex = 0;
           activityIndex < definition.activities.length;
           activityIndex++) {
-        await _repository.saveActivity(
+        await repository.saveActivity(
           TimiqActivity(
             id: newId('activity'),
             categoryId: categoryId,
@@ -324,8 +339,17 @@ class TimiqController extends ChangeNotifier {
     }
   }
 
-  Future<void> saveCategory(TimiqCategory category) =>
-      _runMutation(() => _repository.saveCategory(category));
+  Future<void> saveCategory(TimiqCategory category) async {
+    final name = category.name.trim();
+    if (name.isEmpty) {
+      throw const TimiqValidationException(
+        'Název kategorie nesmí být prázdný.',
+      );
+    }
+    await _runMutation(
+      () => repository.saveCategory(category.copyWith(name: name)),
+    );
+  }
 
   Future<void> archiveCategory(TimiqCategory category, bool archived) {
     return _runMutation(() async {
@@ -334,34 +358,71 @@ class TimiqController extends ChangeNotifier {
             .where((activity) => activity.categoryId == category.id)
             .toList(growable: false);
         if (children.any((item) => item.id == activeEntry?.activityId)) {
-          await _repository.stopActivity(now);
+          await repository.stopActivity(now);
         }
       }
-      await _repository.saveCategory(
-        category.copyWith(isArchived: archived, updatedAt: now),
-      );
+      final restoredOrder = archived
+          ? category.sortOrder
+          : activeCategories.fold<int>(
+              -1,
+              (maximum, item) =>
+                  item.sortOrder > maximum ? item.sortOrder : maximum,
+            ) +
+              1;
+      await repository.saveCategory(category.copyWith(
+        isArchived: archived,
+        sortOrder: restoredOrder,
+        updatedAt: now,
+      ));
     });
   }
 
   Future<void> reorderCategoryIds(List<String> ids) =>
-      _runMutation(() => _repository.reorderCategories(ids));
+      _runMutation(() => repository.reorderCategories(ids));
 
-  Future<void> saveActivity(TimiqActivity activity) =>
-      _runMutation(() => _repository.saveActivity(activity));
+  Future<void> saveActivity(TimiqActivity activity) async {
+    final name = activity.name.trim();
+    if (name.isEmpty) {
+      throw const TimiqValidationException(
+        'Název aktivity nesmí být prázdný.',
+      );
+    }
+    final category = categoryById(activity.categoryId);
+    if (category == null || category.isArchived) {
+      throw const TimiqValidationException(
+        'Vybraná kategorie není dostupná.',
+      );
+    }
+    await _runMutation(
+      () => repository.saveActivity(activity.copyWith(name: name)),
+    );
+  }
 
   Future<void> archiveActivity(TimiqActivity activity, bool archived) {
     return _runMutation(() async {
       if (archived && activeEntry?.activityId == activity.id) {
-        await _repository.stopActivity(now);
+        await repository.stopActivity(now);
       }
-      await _repository.saveActivity(
-        activity.copyWith(isArchived: archived, updatedAt: now),
-      );
+      final restoredOrder = archived
+          ? activity.sortOrder
+          : activeActivities
+                  .where((item) => item.categoryId == activity.categoryId)
+                  .fold<int>(
+                    -1,
+                    (maximum, item) =>
+                        item.sortOrder > maximum ? item.sortOrder : maximum,
+                  ) +
+              1;
+      await repository.saveActivity(activity.copyWith(
+        isArchived: archived,
+        sortOrder: restoredOrder,
+        updatedAt: now,
+      ));
     });
   }
 
   Future<void> toggleFavorite(TimiqActivity activity) => _runMutation(
-        () => _repository.saveActivity(
+        () => repository.saveActivity(
           activity.copyWith(
             isFavorite: !activity.isFavorite,
             updatedAt: now,
@@ -370,7 +431,7 @@ class TimiqController extends ChangeNotifier {
       );
 
   Future<void> reorderActivityIds(List<String> ids) =>
-      _runMutation(() => _repository.reorderActivities(ids));
+      _runMutation(() => repository.reorderActivities(ids));
 
   Future<void> saveTag(TimiqTag tag) async {
     final trimmed = tag.name.trim();
@@ -388,14 +449,14 @@ class TimiqController extends ChangeNotifier {
       );
     }
     await _runMutation(
-      () => _repository.saveTag(
+      () => repository.saveTag(
         TimiqTag(id: tag.id, name: trimmed, createdAt: tag.createdAt),
       ),
     );
   }
 
   Future<void> deleteTag(String id) =>
-      _runMutation(() => _repository.deleteTag(id));
+      _runMutation(() => repository.deleteTag(id));
 
   Future<void> startOrSwitch(String activityId) async {
     final activity = activityById(activityId);
@@ -407,16 +468,16 @@ class TimiqController extends ChangeNotifier {
     if (activeEntry?.activityId == activityId) return;
     await _runMutation(() async {
       if (activeEntry == null) {
-        await _repository.startActivity(activityId, now);
+        await repository.startActivity(activityId, now);
       } else {
-        await _repository.switchActivity(activityId, now);
+        await repository.switchActivity(activityId, now);
       }
-      await _platformBridge.requestNotificationPermission();
     });
+    await _requestNotificationPermissionBestEffort();
   }
 
   Future<void> stop() => _runMutation(() async {
-        await _repository.stopActivity(now);
+        await repository.stopActivity(now);
       });
 
   Future<List<OverlapConflict>> findConflicts(
@@ -424,16 +485,25 @@ class TimiqController extends ChangeNotifier {
     DateTime end, {
     String? excludingId,
   }) =>
-      _repository.findConflicts(start, end, excludingId: excludingId);
+      repository.findConflicts(start, end, excludingId: excludingId);
 
-  Future<void> saveEntry(TimeEntry entry) =>
-      _runMutation(() => _repository.saveEntry(entry));
+  Future<void> saveEntry(TimeEntry entry) async {
+    if (activityById(entry.activityId) == null) {
+      throw const TimiqValidationException('Vybraná aktivita neexistuje.');
+    }
+    if (entry.tagIds.any((id) => tagById(id) == null)) {
+      throw const TimiqValidationException(
+        'Některý z vybraných štítků už neexistuje.',
+      );
+    }
+    await _runMutation(() => repository.saveEntry(entry));
+  }
 
   Future<void> deleteEntry(String id) =>
-      _runMutation(() => _repository.deleteEntry(id));
+      _runMutation(() => repository.deleteEntry(id));
 
   Future<List<EntryDetails>> entriesForDay(DateTime day) async {
-    final entries = await _repository.loadEntries(
+    final entries = await repository.loadEntries(
       DateRange(startOfDay(day), endOfDay(day)),
     );
     return entries.map(detailsForEntry).whereType<EntryDetails>().toList();
@@ -456,8 +526,8 @@ class TimiqController extends ChangeNotifier {
       settings.firstDayOfWeek,
       custom: custom,
     );
-    final currentEntries = await _repository.loadEntries(range);
-    final previousEntries = await _repository.loadEntries(previous);
+    final currentEntries = await repository.loadEntries(range);
+    final previousEntries = await repository.loadEntries(previous);
     return _statisticsCalculator.calculate(
       range: range,
       previous: previous,
@@ -470,41 +540,23 @@ class TimiqController extends ChangeNotifier {
   }
 
   Future<void> updateSettings(AppSettings updated) async {
-    await _repository.saveSettings(updated);
+    await repository.saveSettings(updated);
     settings = updated;
     revision++;
     notifyListeners();
   }
 
   Future<void> exportCsv() async {
-    final data = await _repository.exportAll();
-    final rawEntries =
-        (data['timeEntries']! as List).cast<Map<String, Object?>>();
-    final buffer = StringBuffer()
-      ..writeln(
-        'id,activity_id,start_time,end_time,duration_seconds,note',
-      );
-    for (final row in rawEntries) {
-      final start =
-          DateTime.fromMillisecondsSinceEpoch(row['start_time']! as int);
-      final end = row['end_time'] == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(row['end_time']! as int);
-      final duration = (end ?? now).difference(start).inSeconds;
-      buffer.writeln(<String>[
-        csvEscape(row['id']! as String),
-        csvEscape(row['activity_id']! as String),
-        csvEscape(start.toIso8601String()),
-        csvEscape(end?.toIso8601String() ?? ''),
-        duration.toString(),
-        csvEscape((row['note'] as String?) ?? ''),
-      ].join(','));
-    }
-    await _shareFile('timiq-time-entries.csv', buffer.toString(), 'text/csv');
+    final data = await repository.exportAll();
+    await _shareFile(
+      'timiq-time-entries.csv',
+      buildCsvExport(data, now),
+      'text/csv',
+    );
   }
 
   Future<void> exportJsonBackup() async {
-    final data = await _repository.exportAll();
+    final data = await repository.exportAll();
     await _shareFile(
       'timiq-backup.json',
       prettyJson(data),
@@ -535,17 +587,78 @@ class TimiqController extends ChangeNotifier {
     try {
       await operation();
       await refresh(notify: false);
-      await _syncPlatform();
+      await _syncPlatformBestEffort();
     } finally {
       isBusy = false;
       notifyListeners();
     }
   }
 
-  Future<void> _syncPlatform() => _platformBridge.sync(
+  Future<void> _syncPlatform() => platformBridge.sync(
         active: activeDetails,
         favorites: favoriteActivities,
       );
+
+  Future<void> _syncPlatformBestEffort() async {
+    try {
+      await _syncPlatform();
+    } catch (error, stackTrace) {
+      debugPrint('TimIQ Android surface sync failed: $error\n$stackTrace');
+    }
+  }
+
+  Future<void> _requestNotificationPermissionBestEffort() async {
+    try {
+      await platformBridge.requestNotificationPermission();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'TimIQ notification permission request failed: $error\n$stackTrace',
+      );
+    }
+  }
+}
+
+String buildCsvExport(Map<String, Object?> data, DateTime now) {
+  final rawEntries =
+      (data['timeEntries']! as List).cast<Map<String, Object?>>();
+  final rawActivities =
+      (data['activities']! as List).cast<Map<String, Object?>>();
+  final rawCategories =
+      (data['categories']! as List).cast<Map<String, Object?>>();
+  final activityById = <String, Map<String, Object?>>{
+    for (final row in rawActivities) row['id']! as String: row,
+  };
+  final categoryById = <String, Map<String, Object?>>{
+    for (final row in rawCategories) row['id']! as String: row,
+  };
+  final buffer = StringBuffer('\uFEFF')
+    ..writeln(
+      'id,activity_id,activity_name,category_name,start_time,end_time,'
+      'duration_seconds,note',
+    );
+  for (final row in rawEntries) {
+    final activity = activityById[row['activity_id']];
+    final category = activity == null
+        ? null
+        : categoryById[activity['category_id']];
+    final start =
+        DateTime.fromMillisecondsSinceEpoch(row['start_time']! as int);
+    final end = row['end_time'] == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(row['end_time']! as int);
+    final duration = (end ?? now).difference(start);
+    buffer.writeln(<String>[
+      csvEscape(row['id']! as String),
+      csvEscape(row['activity_id']! as String),
+      csvEscape((activity?['name'] as String?) ?? ''),
+      csvEscape((category?['name'] as String?) ?? ''),
+      csvEscape(start.toIso8601String()),
+      csvEscape(end?.toIso8601String() ?? ''),
+      (duration.isNegative ? Duration.zero : duration).inSeconds.toString(),
+      csvEscape((row['note'] as String?) ?? ''),
+    ].join(','));
+  }
+  return buffer.toString();
 }
 
 class TimiqScope extends InheritedNotifier<TimiqController> {

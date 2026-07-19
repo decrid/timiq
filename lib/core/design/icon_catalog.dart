@@ -33,3 +33,10 @@ const timiqIconCatalog = <TimiqIconOption>[
   TimiqIconOption(Icons.call_outlined, 'Volání'),
   TimiqIconOption(Icons.more_horiz_rounded, 'Ostatní'),
 ];
+
+IconData timiqIconFromCodePoint(int codePoint) {
+  for (final option in timiqIconCatalog) {
+    if (option.icon.codePoint == codePoint) return option.icon;
+  }
+  return Icons.more_horiz_rounded;
+}

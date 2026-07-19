@@ -23,7 +23,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (mounted) {
         showTimiqMessage(
           context,
-          error is Exception ? error.toString() : 'Něco se nepovedlo.',
+          timiqErrorMessage(error),
           isError: true,
         );
       }

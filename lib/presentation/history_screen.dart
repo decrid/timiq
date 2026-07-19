@@ -27,7 +27,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _moveDay(int offset) {
     setState(() {
-      _selectedDay = _selectedDay.add(Duration(days: offset));
+      _selectedDay = addCalendarDays(_selectedDay, offset);
       _loadedRevision = -1;
     });
   }

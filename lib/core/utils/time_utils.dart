@@ -3,14 +3,17 @@ import '../../domain/models.dart';
 DateTime startOfDay(DateTime value) =>
     DateTime(value.year, value.month, value.day);
 
-DateTime endOfDay(DateTime value) => startOfDay(value).add(const Duration(days: 1));
+DateTime addCalendarDays(DateTime value, int days) =>
+    DateTime(value.year, value.month, value.day + days);
+
+DateTime endOfDay(DateTime value) => addCalendarDays(value, 1);
 
 DateTime startOfWeek(DateTime value, FirstDayOfWeek firstDay) {
   final day = startOfDay(value);
   final offset = firstDay == FirstDayOfWeek.monday
       ? day.weekday - DateTime.monday
       : day.weekday % 7;
-  return day.subtract(Duration(days: offset));
+  return addCalendarDays(day, -offset);
 }
 
 DateRange rangeForPeriod(
@@ -22,10 +25,10 @@ DateRange rangeForPeriod(
   switch (period) {
     case StatisticsPeriod.day:
       final start = startOfDay(anchor);
-      return DateRange(start, start.add(const Duration(days: 1)));
+      return DateRange(start, addCalendarDays(start, 1));
     case StatisticsPeriod.week:
       final start = startOfWeek(anchor, firstDay);
-      return DateRange(start, start.add(const Duration(days: 7)));
+      return DateRange(start, addCalendarDays(start, 7));
     case StatisticsPeriod.month:
       final start = DateTime(anchor.year, anchor.month);
       return DateRange(start, DateTime(anchor.year, anchor.month + 1));
@@ -40,9 +43,24 @@ DateRange rangeForPeriod(
   }
 }
 
+int calendarDayCount(DateRange range) {
+  var count = 0;
+  var cursor = startOfDay(range.start);
+  while (cursor.isBefore(range.end)) {
+    cursor = addCalendarDays(cursor, 1);
+    count++;
+  }
+  return count;
+}
+
+DateRange shiftCalendarRange(DateRange range, int days) => DateRange(
+      addCalendarDays(range.start, days),
+      addCalendarDays(range.end, days),
+    );
+
 DateRange previousRange(DateRange range) {
-  final duration = range.duration;
-  return DateRange(range.start.subtract(duration), range.start);
+  final dayCount = calendarDayCount(range);
+  return shiftCalendarRange(range, -dayCount);
 }
 
 DateRange previousRangeForPeriod(
@@ -55,13 +73,13 @@ DateRange previousRangeForPeriod(
     case StatisticsPeriod.day:
       final current = startOfDay(anchor);
       return DateRange(
-        current.subtract(const Duration(days: 1)),
+        addCalendarDays(current, -1),
         current,
       );
     case StatisticsPeriod.week:
       final current = startOfWeek(anchor, firstDay);
       return DateRange(
-        current.subtract(const Duration(days: 7)),
+        addCalendarDays(current, -7),
         current,
       );
     case StatisticsPeriod.month:
@@ -170,7 +188,7 @@ String formatDateWithWeekday(DateTime value) =>
     '${_weekdays[value.weekday - 1]}, ${formatDate(value)}';
 
 String formatRange(DateRange range) {
-  final inclusiveEnd = range.end.subtract(const Duration(days: 1));
+  final inclusiveEnd = range.end.subtract(const Duration(milliseconds: 1));
   if (startOfDay(range.start) == startOfDay(inclusiveEnd)) {
     return formatDate(range.start);
   }
@@ -179,5 +197,9 @@ String formatRange(DateRange range) {
 
 String csvEscape(String value) => '"${value.replaceAll('"', '""')}"';
 
-String newId([String prefix = 'id']) =>
-    '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
+int _idSequence = 0;
+
+String newId([String prefix = 'id']) {
+  _idSequence = (_idSequence + 1) & 0xFFFFF;
+  return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$_idSequence';
+}

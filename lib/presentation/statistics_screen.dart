@@ -61,10 +61,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     setState(() {
       switch (_period) {
         case StatisticsPeriod.day:
-          _anchor = _anchor.add(Duration(days: direction));
+          _anchor = addCalendarDays(_anchor, direction);
           break;
         case StatisticsPeriod.week:
-          _anchor = _anchor.add(Duration(days: 7 * direction));
+          _anchor = addCalendarDays(_anchor, 7 * direction);
           break;
         case StatisticsPeriod.month:
           _anchor = DateTime(_anchor.year, _anchor.month + direction);
@@ -76,11 +76,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         case StatisticsPeriod.custom:
           final range = _custom;
           if (range != null) {
-            final shift = range.duration * direction;
-            _custom = DateRange(
-              range.start.add(shift),
-              range.end.add(shift),
-            );
+            final shift = calendarDayCount(range) * direction;
+            _custom = shiftCalendarRange(range, shift);
           }
           break;
       }
@@ -91,7 +88,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Future<void> _selectCustomRange() async {
     final now = DateTime.now();
     final initialStart =
-        _custom?.start ?? startOfDay(now.subtract(const Duration(days: 6)));
+        _custom?.start ?? addCalendarDays(startOfDay(now), -6);
     final start = await showTimiqDatePicker(
       context: context,
       initialDate: initialStart,
@@ -100,7 +97,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     if (start == null || !mounted) return;
     final end = await showTimiqDatePicker(
       context: context,
-      initialDate: _custom?.end.subtract(const Duration(days: 1)) ?? now,
+      initialDate: _custom == null ? now : addCalendarDays(_custom!.end, -1),
       firstDate: start,
       lastDate: now,
     );
@@ -321,7 +318,7 @@ class _StatisticsBody extends StatelessWidget {
                     children: <Widget>[
                       ActivityGlyph(
                         iconCodePoint: item.activity.iconCodePoint,
-                        color: item.category.color,
+                        color: item.color,
                       ),
                       const SizedBox(width: TimiqSpace.sm),
                       Expanded(
@@ -339,7 +336,7 @@ class _StatisticsBody extends StatelessWidget {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: item.category.color),
+                                  ?.copyWith(color: item.color),
                             ),
                           ],
                         ),
@@ -599,7 +596,7 @@ class _CategoryDetail extends StatelessWidget {
                               ActivityGlyph(
                                 iconCodePoint:
                                     activity.activity.iconCodePoint,
-                                color: category.category.color,
+                                color: activity.color,
                                 size: 40,
                               ),
                               const SizedBox(width: TimiqSpace.sm),
@@ -625,7 +622,7 @@ class _CategoryDetail extends StatelessWidget {
                           const SizedBox(height: TimiqSpace.sm),
                           ProportionBar(
                             value: share,
-                            color: category.category.color,
+                            color: activity.color,
                           ),
                           const SizedBox(height: 5),
                           Align(

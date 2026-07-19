@@ -153,7 +153,7 @@ class TodayScreen extends StatelessWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: deck.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const SizedBox(width: TimiqSpace.sm),
                   itemBuilder: (context, index) {
                     final item = deck[index];

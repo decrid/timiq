@@ -3,9 +3,11 @@ package app.timiq
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -22,9 +24,27 @@ class MainActivity : FlutterActivity() {
                         result.error("invalid_payload", "Chybí data pro Android.", null)
                         return@setMethodCallHandler
                     }
-                    PlatformSync.saveFlutterPayload(this, payload)
-                    PlatformSync.refreshSurfaces(this)
-                    result.success(null)
+                    thread(name = "timiq-platform-sync") {
+                        try {
+                            PlatformSync.saveFlutterPayload(this, payload)
+                            PlatformSync.updateFavoriteTotals(this)
+                            PlatformSync.refreshSurfaces(this)
+                            runOnUiThread { result.success(null) }
+                        } catch (error: Exception) {
+                            Log.e(
+                                "TimIQ.MainActivity",
+                                "Android surface synchronization failed",
+                                error,
+                            )
+                            runOnUiThread {
+                                result.error(
+                                    "platform_sync_failed",
+                                    "Android plochy se nepodařilo obnovit.",
+                                    error.javaClass.simpleName,
+                                )
+                            }
+                        }
+                    }
                 }
                 "requestNotificationPermission" -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

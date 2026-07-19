@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/design/icon_catalog.dart';
 import '../../core/design/timiq_theme.dart';
 import '../../core/utils/time_utils.dart';
 import '../../domain/models.dart';
@@ -68,7 +69,7 @@ class TimiqScreenHeader extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) trailing!,
+        ?trailing,
       ],
     );
   }
@@ -237,7 +238,7 @@ class ActivityGlyph extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
       child: Icon(
-        IconData(iconCodePoint, fontFamily: 'MaterialIcons'),
+        timiqIconFromCodePoint(iconCodePoint),
         color: color,
         size: size * 0.48,
       ),
@@ -524,16 +525,12 @@ class _TimeRingState extends State<TimeRing>
     return RepaintBoundary(
       child: AspectRatio(
         aspectRatio: 1,
-        child: AnimatedBuilder(
-          animation: _animation,
-          builder: (context, child) => CustomPaint(
-            painter: _TimeRingPainter(
-              color: widget.color,
-              phase: _animation.value,
-              active: active != null,
-              trackColor: context.timiq.border,
-            ),
-            child: child,
+        child: CustomPaint(
+          painter: _TimeRingPainter(
+            color: widget.color,
+            animation: _animation,
+            active: active != null,
+            trackColor: context.timiq.border,
           ),
           child: Center(
             child: Padding(
@@ -627,15 +624,15 @@ class _LiveTimeLabelState extends State<_LiveTimeLabel> {
 }
 
 class _TimeRingPainter extends CustomPainter {
-  const _TimeRingPainter({
+  _TimeRingPainter({
     required this.color,
-    required this.phase,
+    required this.animation,
     required this.active,
     required this.trackColor,
-  });
+  }) : super(repaint: animation);
 
   final Color color;
-  final double phase;
+  final Animation<double> animation;
   final bool active;
   final Color trackColor;
 
@@ -664,7 +661,7 @@ class _TimeRingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = color.withValues(alpha: 0.10)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    final start = -math.pi / 2 + phase * math.pi * 2;
+    final start = -math.pi / 2 + animation.value * math.pi * 2;
     canvas.drawArc(rect, start, math.pi * 1.55, false, glow);
     final activePaint = Paint()
       ..style = PaintingStyle.stroke
@@ -686,7 +683,6 @@ class _TimeRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TimeRingPainter oldDelegate) =>
-      oldDelegate.phase != phase ||
       oldDelegate.active != active ||
       oldDelegate.color != color ||
       oldDelegate.trackColor != trackColor;

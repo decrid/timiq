@@ -51,7 +51,7 @@ Future<T?> showTimiqChoice<T>({
                 TimiqSpace.lg,
               ),
               itemCount: values.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const SizedBox(height: TimiqSpace.xs),
               itemBuilder: (context, index) {
                 final value = values[index];

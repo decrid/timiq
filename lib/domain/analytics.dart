@@ -138,7 +138,7 @@ class StatisticsCalculator {
     final dailyCategoryTotals = <DateTime, Map<String, Duration>>{};
     var day = startOfDay(range.start);
     while (day.isBefore(range.end)) {
-      final dayRange = DateRange(day, day.add(const Duration(days: 1)));
+      final dayRange = DateRange(day, addCalendarDays(day, 1));
       var total = Duration.zero;
       final categoryTotalsForDay = <String, Duration>{};
       for (final entry in currentEntries) {
@@ -158,7 +158,7 @@ class StatisticsCalculator {
       }
       dailyTotals[day] = total;
       dailyCategoryTotals[day] = categoryTotalsForDay;
-      day = day.add(const Duration(days: 1));
+      day = addCalendarDays(day, 1);
     }
 
     final total = currentByActivity.values.fold(

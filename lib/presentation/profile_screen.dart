@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../application/timiq_controller.dart';
 import '../core/design/timiq_theme.dart';
@@ -240,26 +241,49 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: TimiqSpace.lg),
           const _SectionTitle('O APLIKACI'),
-          const TimiqCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'TimIQ',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: TimiqSpace.xs),
-                Text(
-                  'Osobní offline chronograf. Data jsou uložena lokálně '
-                  'v zařízení, bez účtu, cloudu, reklam a sledování polohy.',
-                ),
-                SizedBox(height: TimiqSpace.sm),
-                Text('Verze 1.0.0 (1)'),
-              ],
+          const _AboutCard(),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutCard extends StatefulWidget {
+  const _AboutCard();
+
+  @override
+  State<_AboutCard> createState() => _AboutCardState();
+}
+
+class _AboutCardState extends State<_AboutCard> {
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) {
+    return TimiqCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'TimIQ',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
+          ),
+          const SizedBox(height: TimiqSpace.xs),
+          const Text(
+            'Osobní offline chronograf. Data jsou uložena lokálně '
+            'v zařízení, bez účtu, cloudu, reklam a sledování polohy.',
+          ),
+          const SizedBox(height: TimiqSpace.sm),
+          FutureBuilder<PackageInfo>(
+            future: _packageInfo,
+            builder: (context, snapshot) {
+              final info = snapshot.data;
+              if (info == null) return const SizedBox.shrink();
+              return Text('Verze ${info.version} (${info.buildNumber})');
+            },
           ),
         ],
       ),

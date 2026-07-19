@@ -268,6 +268,9 @@ class ActivityTotal {
   final TimiqActivity activity;
   final TimiqCategory category;
   final Duration duration;
+
+  Color get color =>
+      Color(activity.customColorValue ?? category.colorValue);
 }
 
 class TrendValue {

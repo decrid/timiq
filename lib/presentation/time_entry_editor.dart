@@ -24,7 +24,8 @@ class TimeEntryEditor extends StatefulWidget {
 }
 
 class _TimeEntryEditorState extends State<TimeEntryEditor> {
-  late DateTime _date;
+  late DateTime _startDate;
+  late DateTime _endDate;
   late TimeOfDay _start;
   late TimeOfDay _end;
   String? _activityId;
@@ -46,7 +47,8 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
     if (!sourceEnd.isAfter(sourceStart.add(const Duration(minutes: 1)))) {
       sourceEnd = sourceStart.add(const Duration(minutes: 1));
     }
-    _date = startOfDay(sourceStart);
+    _startDate = startOfDay(sourceStart);
+    _endDate = startOfDay(sourceEnd);
     _start = TimeOfDay.fromDateTime(sourceStart);
     _end = TimeOfDay.fromDateTime(sourceEnd);
     _activityId = widget.existing?.activity.id;
@@ -60,24 +62,27 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
     super.dispose();
   }
 
-  DateTime _combine(TimeOfDay time) =>
-      DateTime(_date.year, _date.month, _date.day, time.hour, time.minute);
+  DateTime _combine(DateTime date, TimeOfDay time) =>
+      DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
-  DateTime get _startDateTime => _combine(_start);
+  DateTime get _startDateTime => _combine(_startDate, _start);
 
-  DateTime get _endDateTime {
-    final sameDay = _combine(_end);
-    return sameDay.isAfter(_startDateTime)
-        ? sameDay
-        : sameDay.add(const Duration(days: 1));
-  }
+  DateTime get _endDateTime => _combine(_endDate, _end);
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate({required bool start}) async {
     final value = await showTimiqDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: start ? _startDate : _endDate,
     );
-    if (value != null && mounted) setState(() => _date = value);
+    if (value == null || !mounted) return;
+    setState(() {
+      if (start) {
+        _startDate = startOfDay(value);
+        if (_endDate.isBefore(_startDate)) _endDate = _startDate;
+      } else {
+        _endDate = startOfDay(value);
+      }
+    });
   }
 
   Future<void> _pickTime(bool start) async {
@@ -129,6 +134,14 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
     final controller = TimiqScope.of(context, listen: false);
     final start = _startDateTime;
     final end = _endDateTime;
+    if (!end.isAfter(start)) {
+      showTimiqMessage(
+        context,
+        'Konec záznamu musí být později než začátek.',
+        isError: true,
+      );
+      return;
+    }
     final conflicts = await controller.findConflicts(
       start,
       end,
@@ -342,43 +355,25 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
                   Text('DATUM A ČAS',
                       style: Theme.of(context).textTheme.labelMedium),
                   const SizedBox(height: TimiqSpace.xs),
-                  TimiqCard(
-                    onTap: _pickDate,
-                    child: Row(
-                      children: <Widget>[
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          color: context.timiq.primaryGlow,
-                        ),
-                        const SizedBox(width: TimiqSpace.sm),
-                        Expanded(
-                          child: Text(
-                            formatDateWithWeekday(_date),
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        Icon(Icons.edit_outlined,
-                            size: 18, color: context.timiq.muted),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: TimiqSpace.xs),
                   Row(
                     children: <Widget>[
                       Expanded(
-                        child: _TimeCard(
+                        child: _DateTimeColumn(
                           label: 'OD',
-                          value: _start,
-                          onTap: () => _pickTime(true),
+                          date: _startDate,
+                          time: _start,
+                          onDateTap: () => _pickDate(start: true),
+                          onTimeTap: () => _pickTime(true),
                         ),
                       ),
                       const SizedBox(width: TimiqSpace.sm),
                       Expanded(
-                        child: _TimeCard(
+                        child: _DateTimeColumn(
                           label: 'DO',
-                          value: _end,
-                          nextDay: _endDateTime.day != _startDateTime.day,
-                          onTap: () => _pickTime(false),
+                          date: _endDate,
+                          time: _end,
+                          onDateTap: () => _pickDate(start: false),
+                          onTimeTap: () => _pickTime(false),
                         ),
                       ),
                     ],
@@ -479,42 +474,60 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
   }
 }
 
-class _TimeCard extends StatelessWidget {
-  const _TimeCard({
+class _DateTimeColumn extends StatelessWidget {
+  const _DateTimeColumn({
     required this.label,
-    required this.value,
-    required this.onTap,
-    this.nextDay = false,
+    required this.date,
+    required this.time,
+    required this.onDateTap,
+    required this.onTimeTap,
   });
 
   final String label;
-  final TimeOfDay value;
-  final VoidCallback onTap;
-  final bool nextDay;
+  final DateTime date;
+  final TimeOfDay time;
+  final VoidCallback onDateTap;
+  final VoidCallback onTimeTap;
 
   @override
   Widget build(BuildContext context) {
-    return TimiqCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(label, style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 4),
-          Text(
-            '${twoDigits(value.hour)}:${twoDigits(value.minute)}',
-            style: Theme.of(context).textTheme.headlineMedium,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        TimiqCard(
+          onTap: onDateTap,
+          padding: const EdgeInsets.all(TimiqSpace.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('$label · DATUM',
+                  style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
+              Text(
+                '${date.day}. ${date.month}. ${date.year}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
           ),
-          if (nextDay)
-            Text(
-              'následující den',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: context.timiq.primaryGlow),
-            ),
-        ],
-      ),
+        ),
+        const SizedBox(height: TimiqSpace.xs),
+        TimiqCard(
+          onTap: onTimeTap,
+          padding: const EdgeInsets.all(TimiqSpace.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('$label · ČAS',
+                  style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
+              Text(
+                '${twoDigits(time.hour)}:${twoDigits(time.minute)}',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

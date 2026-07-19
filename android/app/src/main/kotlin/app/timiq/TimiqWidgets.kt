@@ -9,7 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
-import org.json.JSONObject
+import android.util.Log
 import java.util.UUID
 import kotlin.concurrent.thread
 import kotlin.math.max
@@ -25,6 +25,7 @@ abstract class TimiqWidgetProvider(
         val pendingResult = goAsync()
         thread(name = "timiq-widget-refresh") {
             try {
+                PlatformSync.refreshActiveFromDatabase(context)
                 PlatformSync.updateFavoriteTotals(context)
                 appWidgetIds.forEach { id ->
                     appWidgetManager.updateAppWidget(
@@ -53,10 +54,14 @@ class TimerActionReceiver : BroadcastReceiver() {
                         val activityId = intent.getStringExtra(EXTRA_ACTIVITY_ID)
                         if (!activityId.isNullOrBlank()) {
                             switchActivity(context, activityId)
+                        } else {
+                            false
                         }
                     }
                     ACTION_STOP -> stopActivity(context)
+                    else -> false
                 }
+                PlatformSync.refreshActiveFromDatabase(context)
                 PlatformSync.updateFavoriteTotals(context)
                 PlatformSync.refreshSurfaces(context)
             } finally {
@@ -65,8 +70,12 @@ class TimerActionReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun switchActivity(context: Context, activityId: String) {
-        withWritableDatabase(context) { db ->
+    private fun switchActivity(context: Context, activityId: String): Boolean {
+        return PlatformSync.withDatabase(context, writable = true) { db ->
+            if (!activityIsAvailable(db, activityId)) {
+                Log.w(TAG, "Ignoring unavailable widget activity: $activityId")
+                return@withDatabase
+            }
             db.beginTransaction()
             try {
                 val now = System.currentTimeMillis()
@@ -90,7 +99,7 @@ class TimerActionReceiver : BroadcastReceiver() {
                             sameActivity = true
                         } else {
                             newStart = max(now, runningStart + 1L)
-                            db.update(
+                            val updated = db.update(
                                 "time_entries",
                                 ContentValues().apply {
                                     put("end_time", newStart)
@@ -99,10 +108,13 @@ class TimerActionReceiver : BroadcastReceiver() {
                                 "id = ?",
                                 arrayOf(entryId),
                             )
+                            check(updated == 1) {
+                                "Running timer could not be stopped atomically"
+                            }
                         }
                     }
                 }
-                if (!sameActivity && activityIsAvailable(db, activityId)) {
+                if (!sameActivity) {
                     db.insertOrThrow(
                         "time_entries",
                         null,
@@ -124,12 +136,11 @@ class TimerActionReceiver : BroadcastReceiver() {
             } finally {
                 db.endTransaction()
             }
-            PlatformSync.setActive(context, readActive(db))
         }
     }
 
-    private fun stopActivity(context: Context) {
-        withWritableDatabase(context) { db ->
+    private fun stopActivity(context: Context): Boolean {
+        return PlatformSync.withDatabase(context, writable = true) { db ->
             db.beginTransaction()
             try {
                 db.query(
@@ -147,7 +158,7 @@ class TimerActionReceiver : BroadcastReceiver() {
                             System.currentTimeMillis(),
                             cursor.getLong(1) + 1L,
                         )
-                        db.update(
+                        val updated = db.update(
                             "time_entries",
                             ContentValues().apply {
                                 put("end_time", now)
@@ -156,6 +167,9 @@ class TimerActionReceiver : BroadcastReceiver() {
                             "id = ?",
                             arrayOf(cursor.getString(0)),
                         )
+                        check(updated == 1) {
+                            "Running timer could not be stopped"
+                        }
                     }
                 }
                 db.setTransactionSuccessful()
@@ -163,7 +177,6 @@ class TimerActionReceiver : BroadcastReceiver() {
                 db.endTransaction()
             }
         }
-        PlatformSync.setActive(context, null)
     }
 
     private fun activityIsAvailable(
@@ -182,46 +195,8 @@ class TimerActionReceiver : BroadcastReceiver() {
         ).use { cursor -> return cursor.moveToFirst() }
     }
 
-    private fun readActive(db: SQLiteDatabase): JSONObject? {
-        db.rawQuery(
-            """
-            SELECT e.id, a.id, a.name, c.name,
-                   COALESCE(a.custom_color_value, c.color_value), e.start_time
-            FROM time_entries e
-            INNER JOIN activities a ON a.id = e.activity_id
-            INNER JOIN categories c ON c.id = a.category_id
-            WHERE e.end_time IS NULL
-            LIMIT 1
-            """.trimIndent(),
-            null,
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) return null
-            return JSONObject()
-                .put("entryId", cursor.getString(0))
-                .put("activityId", cursor.getString(1))
-                .put("activityName", cursor.getString(2))
-                .put("categoryName", cursor.getString(3))
-                .put("color", cursor.getInt(4))
-                .put("startTime", cursor.getLong(5))
-        }
-    }
-
-    private fun withWritableDatabase(
-        context: Context,
-        action: (SQLiteDatabase) -> Unit,
-    ) {
-        val file = context.getDatabasePath("timiq.db")
-        if (!file.exists()) return
-        runCatching {
-            SQLiteDatabase.openDatabase(
-                file.absolutePath,
-                null,
-                SQLiteDatabase.OPEN_READWRITE,
-            ).use(action)
-        }
-    }
-
     companion object {
+        private const val TAG = "TimIQ.WidgetAction"
         const val ACTION_START = "app.timiq.action.START_ACTIVITY"
         const val ACTION_STOP = "app.timiq.action.STOP_ACTIVITY"
         private const val EXTRA_ACTIVITY_ID = "activity_id"
@@ -265,6 +240,7 @@ class BootReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             thread(name = "timiq-boot-refresh") {
                 try {
+                    PlatformSync.refreshActiveFromDatabase(context)
                     PlatformSync.updateFavoriteTotals(context)
                     PlatformSync.refreshSurfaces(context)
                 } finally {
