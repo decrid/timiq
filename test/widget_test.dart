@@ -15,6 +15,14 @@ void main() {
       timiqIconFromCodePoint(timiqIconCatalog.first.icon.codePoint),
       timiqIconCatalog.first.icon,
     );
+    expect(
+      timiqIconFromCodePoint(Icons.work_outline.codePoint),
+      Icons.work_outline_rounded,
+    );
+    expect(
+      timiqIconFromCodePoint(Icons.family_restroom.codePoint),
+      Icons.family_restroom_rounded,
+    );
     expect(timiqIconFromCodePoint(-1), timiqIconCatalog.last.icon);
   });
 

@@ -217,13 +217,21 @@ class CategoryBadge extends StatelessWidget {
 
 class ActivityGlyph extends StatelessWidget {
   const ActivityGlyph({
-    required this.iconCodePoint,
+    required this._iconCodePoint,
     required this.color,
     super.key,
     this.size = 44,
-  });
+  }) : icon = null;
 
-  final int iconCodePoint;
+  const ActivityGlyph.staticIcon({
+    required this.icon,
+    required this.color,
+    super.key,
+    this.size = 44,
+  }) : _iconCodePoint = null;
+
+  final int? _iconCodePoint;
+  final IconData? icon;
   final Color color;
   final double size;
 
@@ -238,7 +246,7 @@ class ActivityGlyph extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
       child: Icon(
-        timiqIconFromCodePoint(iconCodePoint),
+        icon ?? timiqIconFromCodePoint(_iconCodePoint!),
         color: color,
         size: size * 0.48,
       ),

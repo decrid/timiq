@@ -254,11 +254,15 @@ class _ActivityEditorState extends State<ActivityEditor> {
             onTap: _pickCategory,
             child: Row(
               children: <Widget>[
-                ActivityGlyph(
-                  iconCodePoint:
-                      category?.iconCodePoint ?? Icons.category_outlined.codePoint,
-                  color: inheritedColor,
-                ),
+                category == null
+                    ? ActivityGlyph.staticIcon(
+                        icon: Icons.category_outlined,
+                        color: inheritedColor,
+                      )
+                    : ActivityGlyph(
+                        iconCodePoint: category.iconCodePoint,
+                        color: inheritedColor,
+                      ),
                 const SizedBox(width: TimiqSpace.sm),
                 Expanded(
                   child: Text(

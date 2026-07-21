@@ -33,11 +33,11 @@ class ProfileScreen extends StatelessWidget {
             return 'Podle systému';
         }
       },
-      leadingBuilder: (context, value) => ActivityGlyph(
-        iconCodePoint: switch (value) {
-          TimiqThemeMode.dark => Icons.dark_mode_outlined.codePoint,
-          TimiqThemeMode.light => Icons.light_mode_outlined.codePoint,
-          TimiqThemeMode.system => Icons.settings_brightness_outlined.codePoint,
+      leadingBuilder: (context, value) => ActivityGlyph.staticIcon(
+        icon: switch (value) {
+          TimiqThemeMode.dark => Icons.dark_mode_outlined,
+          TimiqThemeMode.light => Icons.light_mode_outlined,
+          TimiqThemeMode.system => Icons.settings_brightness_outlined,
         },
         color: context.timiq.primaryGlow,
         size: 40,
@@ -157,7 +157,7 @@ class ProfileScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'TimIQ 1.0',
+                        'TimIQ',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 3),
@@ -331,8 +331,8 @@ class _SettingsTile extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: <Widget>[
-            ActivityGlyph(
-              iconCodePoint: icon.codePoint,
+            ActivityGlyph.staticIcon(
+              icon: icon,
               color: context.timiq.primaryGlow,
             ),
             const SizedBox(width: TimiqSpace.sm),

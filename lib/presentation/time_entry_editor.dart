@@ -37,15 +37,18 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
   void initState() {
     super.initState();
     final now = DateTime.now();
-    final sourceStart =
-        widget.existing?.entry.startTime ?? widget.prefilledStart ?? now;
+    var sourceStart = widget.existing?.entry.startTime ??
+        widget.prefilledStart ??
+        now.subtract(const Duration(hours: 1));
     var sourceEnd = widget.existing?.entry.endTime ??
         (widget.existing != null
             ? now
-            : widget.prefilledEnd ??
-                sourceStart.add(const Duration(hours: 1)));
+            : widget.prefilledEnd ?? now);
+    if (sourceEnd.isAfter(now)) {
+      sourceEnd = now;
+    }
     if (!sourceEnd.isAfter(sourceStart.add(const Duration(minutes: 1)))) {
-      sourceEnd = sourceStart.add(const Duration(minutes: 1));
+      sourceStart = sourceEnd.subtract(const Duration(minutes: 1));
     }
     _startDate = startOfDay(sourceStart);
     _endDate = startOfDay(sourceEnd);
@@ -86,9 +89,12 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
   }
 
   Future<void> _pickTime(bool start) async {
+    final controller = TimiqScope.of(context, listen: false);
     final value = await showTimiqTimePicker(
       context: context,
       initialTime: start ? _start : _end,
+      use24HourFormat:
+          controller.settings.timeFormat == TimiqTimeFormat.twentyFourHour,
     );
     if (value == null || !mounted) return;
     setState(() {
@@ -138,6 +144,14 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
       showTimiqMessage(
         context,
         'Konec záznamu musí být později než začátek.',
+        isError: true,
+      );
+      return;
+    }
+    if (end.isAfter(controller.now)) {
+      showTimiqMessage(
+        context,
+        'Konec záznamu nesmí být v budoucnosti.',
         isError: true,
       );
       return;
@@ -326,15 +340,19 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
                     onTap: _pickActivity,
                     child: Row(
                       children: <Widget>[
-                        ActivityGlyph(
-                          iconCodePoint: selectedActivity?.iconCodePoint ??
-                              Icons.bolt_outlined.codePoint,
-                          color: selectedActivity == null
-                              ? context.timiq.primary
-                              : Color(selectedActivity.customColorValue ??
-                                  selectedCategory?.colorValue ??
-                                  context.timiq.primary.toARGB32()),
-                        ),
+                        selectedActivity == null
+                            ? ActivityGlyph.staticIcon(
+                                icon: Icons.bolt_outlined,
+                                color: context.timiq.primary,
+                              )
+                            : ActivityGlyph(
+                                iconCodePoint: selectedActivity.iconCodePoint,
+                                color: Color(
+                                  selectedActivity.customColorValue ??
+                                      selectedCategory?.colorValue ??
+                                      context.timiq.primary.toARGB32(),
+                                ),
+                              ),
                         const SizedBox(width: TimiqSpace.sm),
                         Expanded(
                           child: Text(
@@ -362,6 +380,7 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
                           label: 'OD',
                           date: _startDate,
                           time: _start,
+                          timeFormat: controller.settings.timeFormat,
                           onDateTap: () => _pickDate(start: true),
                           onTimeTap: () => _pickTime(true),
                         ),
@@ -372,6 +391,7 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
                           label: 'DO',
                           date: _endDate,
                           time: _end,
+                          timeFormat: controller.settings.timeFormat,
                           onDateTap: () => _pickDate(start: false),
                           onTimeTap: () => _pickTime(false),
                         ),
@@ -479,6 +499,7 @@ class _DateTimeColumn extends StatelessWidget {
     required this.label,
     required this.date,
     required this.time,
+    required this.timeFormat,
     required this.onDateTap,
     required this.onTimeTap,
   });
@@ -486,6 +507,7 @@ class _DateTimeColumn extends StatelessWidget {
   final String label;
   final DateTime date;
   final TimeOfDay time;
+  final TimiqTimeFormat timeFormat;
   final VoidCallback onDateTap;
   final VoidCallback onTimeTap;
 
@@ -521,7 +543,16 @@ class _DateTimeColumn extends StatelessWidget {
                   style: Theme.of(context).textTheme.labelMedium),
               const SizedBox(height: 4),
               Text(
-                '${twoDigits(time.hour)}:${twoDigits(time.minute)}',
+                formatClock(
+                  DateTime(
+                    date.year,
+                    date.month,
+                    date.day,
+                    time.hour,
+                    time.minute,
+                  ),
+                  format: timeFormat,
+                ),
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
             ],

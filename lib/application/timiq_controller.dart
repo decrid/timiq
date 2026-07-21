@@ -405,13 +405,11 @@ class TimiqController extends ChangeNotifier {
       }
       final restoredOrder = archived
           ? activity.sortOrder
-          : activeActivities
-                  .where((item) => item.categoryId == activity.categoryId)
-                  .fold<int>(
-                    -1,
-                    (maximum, item) =>
-                        item.sortOrder > maximum ? item.sortOrder : maximum,
-                  ) +
+          : activeActivities.fold<int>(
+                -1,
+                (maximum, item) =>
+                    item.sortOrder > maximum ? item.sortOrder : maximum,
+              ) +
               1;
       await repository.saveActivity(activity.copyWith(
         isArchived: archived,
@@ -490,6 +488,12 @@ class TimiqController extends ChangeNotifier {
   Future<void> saveEntry(TimeEntry entry) async {
     if (activityById(entry.activityId) == null) {
       throw const TimiqValidationException('Vybraná aktivita neexistuje.');
+    }
+    final end = entry.endTime;
+    if (end != null && end.isAfter(now)) {
+      throw const TimiqValidationException(
+        'Konec záznamu nesmí být v budoucnosti.',
+      );
     }
     if (entry.tagIds.any((id) => tagById(id) == null)) {
       throw const TimiqValidationException(

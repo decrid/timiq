@@ -38,5 +38,13 @@ IconData timiqIconFromCodePoint(int codePoint) {
   for (final option in timiqIconCatalog) {
     if (option.icon.codePoint == codePoint) return option.icon;
   }
+  final legacy = _legacyIconCodePoints[codePoint];
+  if (legacy != null) return legacy;
   return Icons.more_horiz_rounded;
 }
+
+const _legacyIconCodePoints = <int, IconData>{
+  // The first starter set stored these non-rounded Material icon code points.
+  0xe6f4: Icons.work_outline_rounded,
+  0xe257: Icons.family_restroom_rounded,
+};

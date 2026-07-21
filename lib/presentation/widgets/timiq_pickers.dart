@@ -288,17 +288,25 @@ class _Weekday extends StatelessWidget {
 Future<TimeOfDay?> showTimiqTimePicker({
   required BuildContext context,
   required TimeOfDay initialTime,
+  required bool use24HourFormat,
 }) {
   return showTimiqSheet<TimeOfDay>(
     context: context,
-    builder: (context) => _TimiqClockPicker(initialTime: initialTime),
+    builder: (context) => _TimiqClockPicker(
+      initialTime: initialTime,
+      use24HourFormat: use24HourFormat,
+    ),
   );
 }
 
 class _TimiqClockPicker extends StatefulWidget {
-  const _TimiqClockPicker({required this.initialTime});
+  const _TimiqClockPicker({
+    required this.initialTime,
+    required this.use24HourFormat,
+  });
 
   final TimeOfDay initialTime;
+  final bool use24HourFormat;
 
   @override
   State<_TimiqClockPicker> createState() => _TimiqClockPickerState();
@@ -307,16 +315,40 @@ class _TimiqClockPicker extends StatefulWidget {
 class _TimiqClockPickerState extends State<_TimiqClockPicker> {
   late int _hour = widget.initialTime.hour;
   late int _minute = widget.initialTime.minute;
+  late bool _isPm = widget.initialTime.hour >= 12;
+  late int _displayHour = widget.initialTime.hourOfPeriod == 0
+      ? 12
+      : widget.initialTime.hourOfPeriod;
   late final FixedExtentScrollController _hours =
-      FixedExtentScrollController(initialItem: _hour);
+      FixedExtentScrollController(
+    initialItem: widget.use24HourFormat ? _hour : _displayHour - 1,
+  );
   late final FixedExtentScrollController _minutes =
       FixedExtentScrollController(initialItem: _minute);
+  late final FixedExtentScrollController _period =
+      FixedExtentScrollController(initialItem: _isPm ? 1 : 0);
 
   @override
   void dispose() {
     _hours.dispose();
     _minutes.dispose();
+    _period.dispose();
     super.dispose();
+  }
+
+  void _setDisplayHour(int value) {
+    _displayHour = value;
+    _hour = _toTwentyFourHour(_displayHour, _isPm);
+  }
+
+  void _setPeriod(bool isPm) {
+    _isPm = isPm;
+    _hour = _toTwentyFourHour(_displayHour, _isPm);
+  }
+
+  int _toTwentyFourHour(int hour, bool isPm) {
+    if (isPm) return hour == 12 ? 12 : hour + 12;
+    return hour == 12 ? 0 : hour;
   }
 
   @override
@@ -357,12 +389,16 @@ class _TimiqClockPickerState extends State<_TimiqClockPicker> {
                         itemExtent: 54,
                         diameterRatio: 1.4,
                         physics: const FixedExtentScrollPhysics(),
-                        onSelectedItemChanged: (value) => _hour = value,
+                        onSelectedItemChanged: widget.use24HourFormat
+                            ? (value) => _hour = value
+                            : (value) => _setDisplayHour(value + 1),
                         childDelegate: ListWheelChildBuilderDelegate(
-                          childCount: 24,
+                          childCount: widget.use24HourFormat ? 24 : 12,
                           builder: (context, index) => Center(
                             child: Text(
-                              twoDigits(index),
+                              widget.use24HourFormat
+                                  ? twoDigits(index)
+                                  : '${index + 1}',
                               style:
                                   Theme.of(context).textTheme.headlineMedium,
                             ),
@@ -390,6 +426,30 @@ class _TimiqClockPickerState extends State<_TimiqClockPicker> {
                         ),
                       ),
                     ),
+                    if (!widget.use24HourFormat) ...<Widget>[
+                      const SizedBox(width: TimiqSpace.xs),
+                      Expanded(
+                        child: ListWheelScrollView.useDelegate(
+                          controller: _period,
+                          itemExtent: 54,
+                          diameterRatio: 1.4,
+                          physics: const FixedExtentScrollPhysics(),
+                          onSelectedItemChanged: (value) =>
+                              _setPeriod(value == 1),
+                          childDelegate: ListWheelChildBuilderDelegate(
+                            childCount: 2,
+                            builder: (context, index) => Center(
+                              child: Text(
+                                index == 0 ? 'AM' : 'PM',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineMedium,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

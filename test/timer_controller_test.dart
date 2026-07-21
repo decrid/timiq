@@ -128,6 +128,57 @@ void main() {
     expect(controller.activeEntry?.activityId, 'activity');
   });
 
+  test('manual completed entries cannot end in the future', () async {
+    final now = DateTime(2026, 7, 19, 12);
+    final repository = MemoryTimiqRepository();
+    repository.categories.add(
+      TimiqCategory(
+        id: 'category',
+        name: 'PrĂˇce',
+        colorValue: Colors.blue.toARGB32(),
+        iconCodePoint: Icons.work.codePoint,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    repository.activities.add(
+      TimiqActivity(
+        id: 'activity',
+        categoryId: 'category',
+        name: 'VĂ˝voj',
+        iconCodePoint: Icons.code.codePoint,
+        isFavorite: false,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    final controller = TimiqController(
+      repository: repository,
+      platformBridge: const NoopPlatformBridge(),
+      clock: () => now,
+    );
+    await controller.initialize();
+
+    await expectLater(
+      controller.saveEntry(
+        TimeEntry(
+          id: 'entry',
+          activityId: 'activity',
+          startTime: now.subtract(const Duration(hours: 1)),
+          endTime: now.add(const Duration(minutes: 1)),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ),
+      throwsA(isA<TimiqValidationException>()),
+    );
+    expect(repository.entries, isEmpty);
+  });
+
   test('today breakdown includes an archived activity', () async {
     final now = DateTime(2026, 7, 19, 12);
     final repository = MemoryTimiqRepository();

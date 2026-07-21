@@ -480,8 +480,8 @@ class TagManagementScreen extends StatelessWidget {
                   onTap: () => _edit(context, tag),
                   child: Row(
                     children: <Widget>[
-                      ActivityGlyph(
-                        iconCodePoint: Icons.tag_rounded.codePoint,
+                      ActivityGlyph.staticIcon(
+                        icon: Icons.tag_rounded,
                         color: context.timiq.primaryGlow,
                       ),
                       const SizedBox(width: TimiqSpace.sm),
