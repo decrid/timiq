@@ -167,8 +167,8 @@ class _Principle extends StatelessWidget {
     return TimiqCard(
       child: Row(
         children: <Widget>[
-          ActivityGlyph(
-            iconCodePoint: icon.codePoint,
+          ActivityGlyph.staticIcon(
+            icon: icon,
             color: context.timiq.primaryGlow,
           ),
           const SizedBox(width: TimiqSpace.sm),

@@ -142,7 +142,7 @@ class TodayScreen extends StatelessWidget {
                 icon: Icons.bolt_outlined,
                 title: 'Přidejte první aktivitu',
                 message:
-                    'Aktivity vytvoříte v sekci Já. Potom je odsud spustíte '
+                    'Aktivity vytvoříte v sekci Nastavení. Potom je odsud spustíte '
                     'jediným klepnutím.',
               ),
             )

@@ -55,6 +55,27 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
+                "resetPlatform" -> {
+                    thread(name = "timiq-platform-reset") {
+                        try {
+                            PlatformSync.resetSurfaces(this)
+                            runOnUiThread { result.success(null) }
+                        } catch (error: Exception) {
+                            Log.e(
+                                "TimIQ.MainActivity",
+                                "Android surface reset failed",
+                                error,
+                            )
+                            runOnUiThread {
+                                result.error(
+                                    "platform_reset_failed",
+                                    "Android plochy se nepodařilo resetovat.",
+                                    error.javaClass.simpleName,
+                                )
+                            }
+                        }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

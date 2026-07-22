@@ -31,7 +31,6 @@ class TimiqController extends ChangeNotifier {
   AppSettings settings = const AppSettings();
   List<TimiqCategory> categories = const <TimiqCategory>[];
   List<TimiqActivity> activities = const <TimiqActivity>[];
-  List<TimiqTag> tags = const <TimiqTag>[];
   List<TimeEntry> todayEntries = const <TimeEntry>[];
   List<TimeEntry> recentEntries = const <TimeEntry>[];
   TimeEntry? activeEntry;
@@ -63,13 +62,6 @@ class TimiqController extends ChangeNotifier {
     return null;
   }
 
-  TimiqTag? tagById(String id) {
-    for (final tag in tags) {
-      if (tag.id == id) return tag;
-    }
-    return null;
-  }
-
   EntryDetails? get activeDetails {
     final entry = activeEntry;
     if (entry == null) return null;
@@ -85,10 +77,6 @@ class TimiqController extends ChangeNotifier {
       entry: entry,
       activity: activity,
       category: category,
-      tags: entry.tagIds
-          .map(tagById)
-          .whereType<TimiqTag>()
-          .toList(growable: false),
     );
   }
 
@@ -227,7 +215,6 @@ class TimiqController extends ChangeNotifier {
   Future<void> refresh({bool notify = true}) async {
     categories = await repository.loadCategories();
     activities = await repository.loadActivities();
-    tags = await repository.loadTags();
     activeEntry = await repository.loadActiveEntry();
     recentEntries = await repository.loadRecentEntries();
     final nowValue = now;
@@ -431,31 +418,6 @@ class TimiqController extends ChangeNotifier {
   Future<void> reorderActivityIds(List<String> ids) =>
       _runMutation(() => repository.reorderActivities(ids));
 
-  Future<void> saveTag(TimiqTag tag) async {
-    final trimmed = tag.name.trim();
-    if (trimmed.isEmpty) {
-      throw const TimiqValidationException('Název štítku nesmí být prázdný.');
-    }
-    final duplicate = tags.any(
-      (item) =>
-          item.id != tag.id &&
-          item.name.toLowerCase() == trimmed.toLowerCase(),
-    );
-    if (duplicate) {
-      throw const TimiqValidationException(
-        'Štítek s tímto názvem už existuje.',
-      );
-    }
-    await _runMutation(
-      () => repository.saveTag(
-        TimiqTag(id: tag.id, name: trimmed, createdAt: tag.createdAt),
-      ),
-    );
-  }
-
-  Future<void> deleteTag(String id) =>
-      _runMutation(() => repository.deleteTag(id));
-
   Future<void> startOrSwitch(String activityId) async {
     final activity = activityById(activityId);
     if (activity == null ||
@@ -493,11 +455,6 @@ class TimiqController extends ChangeNotifier {
     if (end != null && end.isAfter(now)) {
       throw const TimiqValidationException(
         'Konec záznamu nesmí být v budoucnosti.',
-      );
-    }
-    if (entry.tagIds.any((id) => tagById(id) == null)) {
-      throw const TimiqValidationException(
-        'Některý z vybraných štítků už neexistuje.',
       );
     }
     await _runMutation(() => repository.saveEntry(entry));
@@ -548,6 +505,25 @@ class TimiqController extends ChangeNotifier {
     settings = updated;
     revision++;
     notifyListeners();
+  }
+
+  Future<void> resetApplication() async {
+    isBusy = true;
+    notifyListeners();
+    try {
+      await repository.resetAll();
+      settings = const AppSettings(onboardingCompleted: false);
+      categories = const <TimiqCategory>[];
+      activities = const <TimiqActivity>[];
+      todayEntries = const <TimeEntry>[];
+      recentEntries = const <TimeEntry>[];
+      activeEntry = null;
+      revision++;
+      await _resetPlatformBestEffort();
+    } finally {
+      isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> exportCsv() async {
@@ -618,6 +594,14 @@ class TimiqController extends ChangeNotifier {
       debugPrint(
         'TimIQ notification permission request failed: $error\n$stackTrace',
       );
+    }
+  }
+
+  Future<void> _resetPlatformBestEffort() async {
+    try {
+      await platformBridge.resetPlatform();
+    } catch (error, stackTrace) {
+      debugPrint('TimIQ Android surface reset failed: $error\n$stackTrace');
     }
   }
 }

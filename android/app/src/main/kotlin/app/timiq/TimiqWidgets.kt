@@ -80,7 +80,7 @@ class TimerActionReceiver : BroadcastReceiver() {
             try {
                 val now = System.currentTimeMillis()
                 var newStart = now
-                var sameActivity = false
+                var stoppedSameActivity = false
                 db.query(
                     "time_entries",
                     arrayOf("id", "activity_id", "start_time"),
@@ -96,7 +96,20 @@ class TimerActionReceiver : BroadcastReceiver() {
                         val runningActivity = cursor.getString(1)
                         val runningStart = cursor.getLong(2)
                         if (runningActivity == activityId) {
-                            sameActivity = true
+                            newStart = max(now, runningStart + 1L)
+                            val updated = db.update(
+                                "time_entries",
+                                ContentValues().apply {
+                                    put("end_time", newStart)
+                                    put("updated_at", newStart)
+                                },
+                                "id = ?",
+                                arrayOf(entryId),
+                            )
+                            check(updated == 1) {
+                                "Running timer could not be stopped atomically"
+                            }
+                            stoppedSameActivity = true
                         } else {
                             newStart = max(now, runningStart + 1L)
                             val updated = db.update(
@@ -114,24 +127,26 @@ class TimerActionReceiver : BroadcastReceiver() {
                         }
                     }
                 }
-                if (!sameActivity) {
-                    db.insertOrThrow(
-                        "time_entries",
-                        null,
-                        ContentValues().apply {
-                            put(
-                                "id",
-                                "entry_${System.currentTimeMillis()}_${UUID.randomUUID()}",
-                            )
-                            put("activity_id", activityId)
-                            put("start_time", newStart)
-                            putNull("end_time")
-                            put("note", "")
-                            put("created_at", newStart)
-                            put("updated_at", newStart)
-                        },
-                    )
+                if (stoppedSameActivity) {
+                    db.setTransactionSuccessful()
+                    return@withDatabase
                 }
+                db.insertOrThrow(
+                    "time_entries",
+                    null,
+                    ContentValues().apply {
+                        put(
+                            "id",
+                            "entry_${System.currentTimeMillis()}_${UUID.randomUUID()}",
+                        )
+                        put("activity_id", activityId)
+                        put("start_time", newStart)
+                        putNull("end_time")
+                        put("note", "")
+                        put("created_at", newStart)
+                        put("updated_at", newStart)
+                    },
+                )
                 db.setTransactionSuccessful()
             } finally {
                 db.endTransaction()

@@ -5,10 +5,16 @@ class AppDatabase {
   AppDatabase._();
 
   static const String fileName = 'timiq.db';
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
+  static const List<String> tagRemovalMigrationSql = <String>[
+    'DROP TABLE IF EXISTS time_entry_tags',
+    'DROP TABLE IF EXISTS tags',
+  ];
   static Database? _database;
   static final Map<int, Future<void> Function(Database)> _migrations =
-      <int, Future<void> Function(Database)>{};
+      <int, Future<void> Function(Database)>{
+    2: _dropTagTables,
+  };
 
   static Future<Database> open() async {
     final existing = _database;
@@ -73,24 +79,6 @@ class AppDatabase {
         )
       ''');
       await txn.execute('''
-        CREATE TABLE tags (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-          created_at INTEGER NOT NULL
-        )
-      ''');
-      await txn.execute('''
-        CREATE TABLE time_entry_tags (
-          time_entry_id TEXT NOT NULL,
-          tag_id TEXT NOT NULL,
-          PRIMARY KEY (time_entry_id, tag_id),
-          FOREIGN KEY (time_entry_id) REFERENCES time_entries(id)
-            ON UPDATE CASCADE ON DELETE CASCADE,
-          FOREIGN KEY (tag_id) REFERENCES tags(id)
-            ON UPDATE CASCADE ON DELETE CASCADE
-        )
-      ''');
-      await txn.execute('''
         CREATE TABLE app_settings (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
@@ -120,8 +108,8 @@ class AppDatabase {
     int oldVersion,
     int newVersion,
   ) async {
-    // Migrations are deliberately additive. Never use a destructive fallback:
-    // user history must survive every ordinary application upgrade.
+    // Migrations must never use a destructive fallback: user history must
+    // survive every ordinary application upgrade.
     for (var version = oldVersion + 1; version <= newVersion; version++) {
       final migration = _migrations[version];
       if (migration == null) {
@@ -129,5 +117,13 @@ class AppDatabase {
       }
       await migration(db);
     }
+  }
+
+  static Future<void> _dropTagTables(Database db) async {
+    await db.transaction((txn) async {
+      for (final statement in tagRemovalMigrationSql) {
+        await txn.execute(statement);
+      }
+    });
   }
 }

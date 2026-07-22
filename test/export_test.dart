@@ -1,8 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:timiq/application/timiq_controller.dart';
+import 'package:timiq/data/app_database.dart';
 import 'package:timiq/data/timiq_repository.dart';
 
 void main() {
+  test('schema version 2 migrates only legacy tag tables', () {
+    expect(AppDatabase.schemaVersion, 2);
+    expect(AppDatabase.tagRemovalMigrationSql, <String>[
+      'DROP TABLE IF EXISTS time_entry_tags',
+      'DROP TABLE IF EXISTS tags',
+    ]);
+    expect(
+      AppDatabase.tagRemovalMigrationSql.join(' '),
+      isNot(anyOf(contains('time_entries'), contains('activities'))),
+    );
+  });
+
   test('CSV export includes names and safely escapes user notes', () {
     final start = DateTime(2026, 7, 19, 8);
     final data = <String, Object?>{
@@ -71,12 +84,6 @@ void main() {
       timeEntries: <Map<String, Object?>>[
         <String, Object?>{'id': 'entry'},
       ],
-      tags: <Map<String, Object?>>[
-        <String, Object?>{'id': 'tag'},
-      ],
-      timeEntryTags: <Map<String, Object?>>[
-        <String, Object?>{'time_entry_id': 'entry', 'tag_id': 'tag'},
-      ],
       settings: <Map<String, Object?>>[
         <String, Object?>{'key': 'theme_mode', 'value': 'dark'},
       ],
@@ -84,17 +91,17 @@ void main() {
     );
 
     expect(payload['format'], 'timiq-backup');
-    expect(payload['version'], 1);
+    expect(payload['version'], 2);
     expect(payload['exportedAt'], exportedAt.toIso8601String());
     for (final key in <String>[
       'categories',
       'activities',
       'timeEntries',
-      'tags',
-      'timeEntryTags',
       'settings',
     ]) {
       expect(payload[key], isNotEmpty);
     }
+    expect(payload.containsKey('tags'), isFalse);
+    expect(payload.containsKey('timeEntryTags'), isFalse);
   });
 }

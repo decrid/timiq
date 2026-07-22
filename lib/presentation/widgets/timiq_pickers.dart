@@ -93,6 +93,87 @@ Future<T?> showTimiqChoice<T>({
   );
 }
 
+Future<T?> showTimiqChoiceDialog<T>({
+  required BuildContext context,
+  required String title,
+  required List<T> values,
+  required String Function(T value) labelBuilder,
+  T? selected,
+  Widget Function(BuildContext context, T value)? leadingBuilder,
+}) {
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.72),
+    builder: (dialogContext) => Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: TimiqSpace.md),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(TimiqSpace.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  ),
+                  TimiqIconButton(
+                    icon: Icons.close,
+                    tooltip: 'Zavřít',
+                    onPressed: () => Navigator.pop(dialogContext),
+                  ),
+                ],
+              ),
+              const SizedBox(height: TimiqSpace.md),
+              ...values.map(
+                (value) {
+                  final isSelected = value == selected;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: TimiqSpace.xs),
+                    child: TimiqCard(
+                      onTap: () => Navigator.pop(dialogContext, value),
+                      borderColor: isSelected
+                          ? context.timiq.primary
+                          : context.timiq.border,
+                      color: isSelected
+                          ? context.timiq.primary.withValues(alpha: 0.1)
+                          : null,
+                      child: Row(
+                        children: <Widget>[
+                          if (leadingBuilder != null) ...<Widget>[
+                            leadingBuilder(context, value),
+                            const SizedBox(width: TimiqSpace.sm),
+                          ],
+                          Expanded(
+                            child: Text(
+                              labelBuilder(value),
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(
+                              Icons.check_circle,
+                              color: context.timiq.primaryGlow,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Future<DateTime?> showTimiqDatePicker({
   required BuildContext context,
   required DateTime initialDate,

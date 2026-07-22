@@ -162,6 +162,18 @@ object PlatformSync {
         updateNotification(context)
     }
 
+    fun resetSurfaces(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .putString(KEY_FAVORITES, JSONArray().toString())
+            .commit()
+        val manager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(NOTIFICATION_ID)
+        updateWidgets(context)
+    }
+
     fun updateWidgets(context: Context) {
         val manager = AppWidgetManager.getInstance(context)
         listOf(

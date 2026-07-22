@@ -24,11 +24,15 @@ class TimiqPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return ColoredBox(
       color: context.timiq.background,
       child: SafeArea(
         bottom: false,
-        child: Padding(padding: padding, child: child),
+        child: Padding(
+          padding: padding.copyWith(bottom: padding.bottom + bottomInset),
+          child: child,
+        ),
       ),
     );
   }
@@ -217,7 +221,7 @@ class CategoryBadge extends StatelessWidget {
 
 class ActivityGlyph extends StatelessWidget {
   const ActivityGlyph({
-    required this._iconCodePoint,
+    required this.iconCodePoint,
     required this.color,
     super.key,
     this.size = 44,
@@ -228,9 +232,9 @@ class ActivityGlyph extends StatelessWidget {
     required this.color,
     super.key,
     this.size = 44,
-  }) : _iconCodePoint = null;
+  }) : iconCodePoint = null;
 
-  final int? _iconCodePoint;
+  final int? iconCodePoint;
   final IconData? icon;
   final Color color;
   final double size;
@@ -246,7 +250,7 @@ class ActivityGlyph extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
       child: Icon(
-        icon ?? timiqIconFromCodePoint(_iconCodePoint!),
+        icon ?? timiqIconFromCodePoint(iconCodePoint!),
         color: color,
         size: size * 0.48,
       ),
@@ -321,15 +325,20 @@ Future<T?> showTimiqSheet<T>({
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.72),
-    builder: (context) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: context.timiq.surface,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(TimiqRadius.large),
-        ),
-        border: Border(top: BorderSide(color: context.timiq.border)),
+    builder: (context) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewPaddingOf(context).bottom,
       ),
-      child: builder(context),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.timiq.surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(TimiqRadius.large),
+          ),
+          border: Border(top: BorderSide(color: context.timiq.border)),
+        ),
+        child: builder(context),
+      ),
     ),
   );
 }

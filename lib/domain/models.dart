@@ -117,7 +117,6 @@ class TimeEntry {
     required this.updatedAt,
     this.endTime,
     this.note = '',
-    this.tagIds = const <String>[],
   });
 
   static const Object _unset = Object();
@@ -129,7 +128,6 @@ class TimeEntry {
   final String note;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final List<String> tagIds;
 
   bool get isRunning => endTime == null;
 
@@ -146,7 +144,6 @@ class TimeEntry {
     String? note,
     DateTime? createdAt,
     DateTime? updatedAt,
-    List<String>? tagIds,
   }) {
     return TimeEntry(
       id: id ?? this.id,
@@ -156,21 +153,8 @@ class TimeEntry {
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      tagIds: tagIds ?? this.tagIds,
     );
   }
-}
-
-class TimiqTag {
-  const TimiqTag({
-    required this.id,
-    required this.name,
-    required this.createdAt,
-  });
-
-  final String id;
-  final String name;
-  final DateTime createdAt;
 }
 
 class AppSettings {
@@ -223,13 +207,11 @@ class EntryDetails {
     required this.entry,
     required this.activity,
     required this.category,
-    this.tags = const <TimiqTag>[],
   });
 
   final TimeEntry entry;
   final TimiqActivity activity;
   final TimiqCategory category;
-  final List<TimiqTag> tags;
 
   Color get color =>
       Color(activity.customColorValue ?? category.colorValue);

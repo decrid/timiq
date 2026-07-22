@@ -18,7 +18,7 @@ class ProfileScreen extends StatelessWidget {
 
   Future<void> _appearance(BuildContext context) async {
     final controller = TimiqScope.of(context, listen: false);
-    final mode = await showTimiqChoice<TimiqThemeMode>(
+    final mode = await showTimiqChoiceDialog<TimiqThemeMode>(
       context: context,
       title: 'Vzhled TimIQ',
       values: TimiqThemeMode.values,
@@ -58,7 +58,7 @@ class ProfileScreen extends StatelessWidget {
 
   Future<void> _firstDay(BuildContext context) async {
     final controller = TimiqScope.of(context, listen: false);
-    final value = await showTimiqChoice<FirstDayOfWeek>(
+    final value = await showTimiqChoiceDialog<FirstDayOfWeek>(
       context: context,
       title: 'První den týdne',
       values: FirstDayOfWeek.values,
@@ -81,7 +81,7 @@ class ProfileScreen extends StatelessWidget {
 
   Future<void> _timeFormat(BuildContext context) async {
     final controller = TimiqScope.of(context, listen: false);
-    final value = await showTimiqChoice<TimiqTimeFormat>(
+    final value = await showTimiqChoiceDialog<TimiqTimeFormat>(
       context: context,
       title: 'Formát času',
       values: TimiqTimeFormat.values,
@@ -116,6 +116,37 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _reset(BuildContext context) async {
+    final first = await showTimiqConfirm(
+      context: context,
+      title: 'Resetovat TimIQ?',
+      message:
+          'Tato akce trvale odstraní všechna lokální data TimIQ: všechny '
+          'kategorie, všechny aktivity, všechny časové záznamy, celou historii, '
+          'všechna nastavení aplikace a stav onboardingu.',
+      confirmLabel: 'Pokračovat',
+      destructive: true,
+    );
+    if (!first || !context.mounted) return;
+    final finalConfirm = await showTimiqConfirm(
+      context: context,
+      title: 'Opravdu chcete nenávratně smazat všechna data?',
+      message:
+          'Po definitivním resetu se TimIQ vrátí na úvodní onboarding jako po '
+          'první instalaci. Tuto akci nelze vrátit zpět.',
+      confirmLabel: 'Definitivně resetovat',
+      destructive: true,
+    );
+    if (!finalConfirm || !context.mounted) return;
+    try {
+      await TimiqScope.of(context, listen: false).resetApplication();
+    } catch (error) {
+      if (context.mounted) {
+        showTimiqMessage(context, timiqErrorMessage(error), isError: true);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = TimiqScope.of(context);
@@ -123,7 +154,7 @@ class ProfileScreen extends StatelessWidget {
       child: ListView(
         children: <Widget>[
           const TimiqScreenHeader(
-            title: 'Já',
+            title: 'Nastavení',
             subtitle: 'Vaše data, vaše nastavení',
           ),
           const SizedBox(height: TimiqSpace.lg),
@@ -189,12 +220,6 @@ class ProfileScreen extends StatelessWidget {
             subtitle: 'Oblíbené, kategorie a archiv',
             onTap: () => _open(context, const ActivityManagementScreen()),
           ),
-          _SettingsTile(
-            icon: Icons.tag_rounded,
-            title: 'Štítky',
-            subtitle: 'Volitelný kontext časových záznamů',
-            onTap: () => _open(context, const TagManagementScreen()),
-          ),
           const SizedBox(height: TimiqSpace.lg),
           const _SectionTitle('PREFERENCE'),
           _SettingsTile(
@@ -236,8 +261,17 @@ class ProfileScreen extends StatelessWidget {
           _SettingsTile(
             icon: Icons.backup_outlined,
             title: 'Kompletní JSON záloha',
-            subtitle: 'Kategorie, aktivity, záznamy, štítky a nastavení',
+            subtitle: 'Kategorie, aktivity, záznamy a nastavení',
             onTap: () => _export(context, controller.exportJsonBackup),
+          ),
+          const SizedBox(height: TimiqSpace.lg),
+          const _SectionTitle('RESET APLIKACE'),
+          _SettingsTile(
+            icon: Icons.warning_amber_rounded,
+            title: 'Resetovat TimIQ',
+            subtitle: 'Trvale smaže všechna lokální data',
+            destructive: true,
+            onTap: () => _reset(context),
           ),
           const SizedBox(height: TimiqSpace.lg),
           const _SectionTitle('O APLIKACI'),
@@ -316,12 +350,14 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.destructive = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
@@ -333,14 +369,20 @@ class _SettingsTile extends StatelessWidget {
           children: <Widget>[
             ActivityGlyph.staticIcon(
               icon: icon,
-              color: context.timiq.primaryGlow,
+              color:
+                  destructive ? TimiqColors.danger : context.timiq.primaryGlow,
             ),
             const SizedBox(width: TimiqSpace.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: destructive ? TimiqColors.danger : null,
+                        ),
+                  ),
                   Text(
                     subtitle,
                     maxLines: 2,

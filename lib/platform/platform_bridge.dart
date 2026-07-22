@@ -52,4 +52,13 @@ class PlatformBridge {
       // Allows widget tests and supported non-Android targets to run normally.
     }
   }
+
+  Future<void> resetPlatform() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _channel.invokeMethod<void>('resetPlatform');
+    } on MissingPluginException {
+      // Allows widget tests and supported non-Android targets to run normally.
+    }
+  }
 }

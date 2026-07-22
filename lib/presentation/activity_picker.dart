@@ -104,7 +104,7 @@ class _ActivityPickerBodyState extends State<_ActivityPickerBody> {
                           ? 'Zatím tu nejsou aktivity'
                           : 'Nic jsme nenašli',
                       message: normalized.isEmpty
-                          ? 'Vytvořte první aktivitu v sekci Já.'
+                          ? 'Vytvořte první aktivitu v sekci Nastavení.'
                           : 'Zkuste kratší název nebo jinou kategorii.',
                     ),
                   )

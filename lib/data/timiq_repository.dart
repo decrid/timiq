@@ -10,7 +10,6 @@ abstract interface class TimiqRepository {
   Future<void> initialize();
   Future<List<TimiqCategory>> loadCategories({bool includeArchived = true});
   Future<List<TimiqActivity>> loadActivities({bool includeArchived = true});
-  Future<List<TimiqTag>> loadTags();
   Future<TimeEntry?> loadActiveEntry();
   Future<List<TimeEntry>> loadEntries(DateRange range);
   Future<List<TimeEntry>> loadRecentEntries({int limit = 30});
@@ -23,8 +22,6 @@ abstract interface class TimiqRepository {
   Future<void> saveActivity(TimiqActivity activity);
   Future<void> reorderCategories(List<String> ids);
   Future<void> reorderActivities(List<String> ids);
-  Future<void> saveTag(TimiqTag tag);
-  Future<void> deleteTag(String id);
   Future<TimeEntry> startActivity(String activityId, DateTime at);
   Future<TimeEntry?> stopActivity(DateTime at);
   Future<TimeEntry> switchActivity(String activityId, DateTime at);
@@ -32,6 +29,7 @@ abstract interface class TimiqRepository {
   Future<void> deleteEntry(String id);
   Future<AppSettings> loadSettings();
   Future<void> saveSettings(AppSettings settings);
+  Future<void> resetAll();
   Future<Map<String, Object?>> exportAll();
 }
 
@@ -74,12 +72,6 @@ class SqliteTimiqRepository implements TimiqRepository {
   }
 
   @override
-  Future<List<TimiqTag>> loadTags() async {
-    final rows = await _database.query('tags', orderBy: 'name COLLATE NOCASE');
-    return rows.map(_tagFromMap).toList(growable: false);
-  }
-
-  @override
   Future<TimeEntry?> loadActiveEntry() async {
     final rows = await _database.query(
       'time_entries',
@@ -87,22 +79,21 @@ class SqliteTimiqRepository implements TimiqRepository {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return (await _entriesWithTags(rows)).single;
+    return _entryFromMap(rows.single);
   }
 
   @override
   Future<List<TimeEntry>> loadEntries(DateRange range) async {
     final rows = await _database.query(
       'time_entries',
-      where:
-          'start_time < ? AND (end_time IS NULL OR end_time > ?)',
+      where: 'start_time < ? AND (end_time IS NULL OR end_time > ?)',
       whereArgs: <Object>[
         range.end.millisecondsSinceEpoch,
         range.start.millisecondsSinceEpoch,
       ],
       orderBy: 'start_time ASC',
     );
-    return _entriesWithTags(rows);
+    return rows.map(_entryFromMap).toList(growable: false);
   }
 
   @override
@@ -112,7 +103,7 @@ class SqliteTimiqRepository implements TimiqRepository {
       orderBy: 'start_time DESC',
       limit: limit,
     );
-    return _entriesWithTags(rows);
+    return rows.map(_entryFromMap).toList(growable: false);
   }
 
   @override
@@ -217,27 +208,6 @@ class SqliteTimiqRepository implements TimiqRepository {
         );
       }
     });
-  }
-
-  @override
-  Future<void> saveTag(TimiqTag tag) async {
-    final values = _tagToMap(tag);
-    final updated = await _database.update(
-      'tags',
-      values,
-      where: 'id = ?',
-      whereArgs: <Object>[tag.id],
-    );
-    if (updated == 0) await _database.insert('tags', values);
-  }
-
-  @override
-  Future<void> deleteTag(String id) async {
-    await _database.delete(
-      'tags',
-      where: 'id = ?',
-      whereArgs: <Object>[id],
-    );
   }
 
   @override
@@ -360,20 +330,6 @@ class SqliteTimiqRepository implements TimiqRepository {
           'Zadaný čas se překrývá s jiným záznamem.',
         );
       }
-      final uniqueTagIds = entry.tagIds.toSet();
-      if (uniqueTagIds.isNotEmpty) {
-        final placeholders =
-            List<String>.filled(uniqueTagIds.length, '?').join(',');
-        final existingTags = await txn.rawQuery(
-          'SELECT id FROM tags WHERE id IN ($placeholders)',
-          uniqueTagIds.toList(growable: false),
-        );
-        if (existingTags.length != uniqueTagIds.length) {
-          throw const TimiqValidationException(
-            'Některý z vybraných štítků už neexistuje.',
-          );
-        }
-      }
       final values = _entryToMap(entry);
       final updated = await txn.update(
         'time_entries',
@@ -382,30 +338,16 @@ class SqliteTimiqRepository implements TimiqRepository {
         whereArgs: <Object>[entry.id],
       );
       if (updated == 0) await txn.insert('time_entries', values);
-      await txn.delete(
-        'time_entry_tags',
-        where: 'time_entry_id = ?',
-        whereArgs: <Object>[entry.id],
-      );
-      for (final tagId in uniqueTagIds) {
-        await txn.insert(
-          'time_entry_tags',
-          <String, Object?>{
-            'time_entry_id': entry.id,
-            'tag_id': tagId,
-          },
-        );
-      }
     });
   }
 
   @override
   Future<void> deleteEntry(String id) async {
     await _database.delete(
-        'time_entries',
-        where: 'id = ?',
-        whereArgs: <Object>[id],
-      );
+      'time_entries',
+      where: 'id = ?',
+      whereArgs: <Object>[id],
+    );
   }
 
   @override
@@ -454,54 +396,28 @@ class SqliteTimiqRepository implements TimiqRepository {
   }
 
   @override
+  Future<void> resetAll() async {
+    await _database.transaction((txn) async {
+      await txn.delete('time_entries');
+      await txn.delete('activities');
+      await txn.delete('categories');
+      await txn.delete('app_settings');
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> exportAll() async {
     final categories = await _database.query('categories');
     final activities = await _database.query('activities');
     final entries = await _database.query('time_entries');
-    final tags = await _database.query('tags');
-    final joins = await _database.query('time_entry_tags');
     final settings = await _database.query('app_settings');
     return buildBackupPayload(
       categories: categories,
       activities: activities,
       timeEntries: entries,
-      tags: tags,
-      timeEntryTags: joins,
       settings: settings,
       exportedAt: DateTime.now(),
     );
-  }
-
-  Future<List<TimeEntry>> _entriesWithTags(
-    List<Map<String, Object?>> rows,
-  ) async {
-    if (rows.isEmpty) return const <TimeEntry>[];
-    final tagsByEntry = <String, List<String>>{};
-    final ids = rows.map((row) => row['id']! as String).toList(growable: false);
-    for (var offset = 0; offset < ids.length; offset += 900) {
-      final end = (offset + 900).clamp(0, ids.length).toInt();
-      final chunk = ids.sublist(offset, end);
-      final placeholders = List<String>.filled(chunk.length, '?').join(',');
-      final joins = await _database.rawQuery(
-        'SELECT time_entry_id, tag_id FROM time_entry_tags '
-        'WHERE time_entry_id IN ($placeholders)',
-        chunk,
-      );
-      for (final join in joins) {
-        tagsByEntry
-            .putIfAbsent(
-              join['time_entry_id']! as String,
-              () => <String>[],
-            )
-            .add(join['tag_id']! as String);
-      }
-    }
-    return rows.map((row) {
-      final entry = _entryFromMap(row);
-      return entry.copyWith(
-        tagIds: tagsByEntry[entry.id] ?? const <String>[],
-      );
-    }).toList(growable: false);
   }
 
   T _enumValue<T extends Enum>(List<T> values, String? name, T fallback) {
@@ -582,18 +498,6 @@ Map<String, Object?> _entryToMap(TimeEntry value) => <String, Object?>{
       'updated_at': value.updatedAt.millisecondsSinceEpoch,
     };
 
-TimiqTag _tagFromMap(Map<String, Object?> map) => TimiqTag(
-      id: map['id']! as String,
-      name: map['name']! as String,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']! as int),
-    );
-
-Map<String, Object?> _tagToMap(TimiqTag value) => <String, Object?>{
-      'id': value.id,
-      'name': value.name,
-      'created_at': value.createdAt.millisecondsSinceEpoch,
-    };
-
 String prettyJson(Map<String, Object?> value) =>
     const JsonEncoder.withIndent('  ').convert(value);
 
@@ -601,19 +505,15 @@ Map<String, Object?> buildBackupPayload({
   required List<Map<String, Object?>> categories,
   required List<Map<String, Object?>> activities,
   required List<Map<String, Object?>> timeEntries,
-  required List<Map<String, Object?>> tags,
-  required List<Map<String, Object?>> timeEntryTags,
   required List<Map<String, Object?>> settings,
   required DateTime exportedAt,
 }) =>
     <String, Object?>{
       'format': 'timiq-backup',
-      'version': 1,
+      'version': 2,
       'exportedAt': exportedAt.toUtc().toIso8601String(),
       'categories': categories,
       'activities': activities,
       'timeEntries': timeEntries,
-      'tags': tags,
-      'timeEntryTags': timeEntryTags,
       'settings': settings,
     };

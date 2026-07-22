@@ -6,6 +6,8 @@ import 'package:timiq/core/design/icon_catalog.dart';
 import 'package:timiq/core/design/timiq_theme.dart';
 import 'package:timiq/domain/models.dart';
 import 'package:timiq/presentation/time_entry_editor.dart';
+import 'package:timiq/presentation/widgets/timiq_components.dart';
+import 'package:timiq/presentation/widgets/timiq_pickers.dart';
 
 import 'support/memory_repository.dart';
 
@@ -41,6 +43,46 @@ void main() {
     expect(find.text('TimIQ'), findsOneWidget);
     expect(find.text('Tvůj čas.\nBez domněnek.'), findsOneWidget);
     expect(find.text('Začít se základní sadou'), findsOneWidget);
+  });
+
+  testWidgets('ActivityGlyph keeps a public stored icon API', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.ltr,
+          child: ActivityGlyph(
+            iconCodePoint: 0xe6f4,
+            color: Colors.blue,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.work_outline_rounded), findsOneWidget);
+  });
+
+  testWidgets('time picker exposes a 12 hour period column', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TimiqTheme.dark(),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showTimiqTimePicker(
+              context: context,
+              initialTime: const TimeOfDay(hour: 18, minute: 30),
+              use24HourFormat: false,
+            ),
+            child: const Text('Open'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PM'), findsWidgets);
+    expect(find.text('18'), findsNothing);
   });
 
   testWidgets('multi-day editor preserves independent start and end dates',

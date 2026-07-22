@@ -30,7 +30,6 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
   late TimeOfDay _end;
   String? _activityId;
   late final TextEditingController _note;
-  late final Set<String> _tagIds;
   bool _saving = false;
 
   @override
@@ -56,7 +55,6 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
     _end = TimeOfDay.fromDateTime(sourceEnd);
     _activityId = widget.existing?.activity.id;
     _note = TextEditingController(text: widget.existing?.entry.note ?? '');
-    _tagIds = <String>{...?widget.existing?.entry.tagIds};
   }
 
   @override
@@ -177,7 +175,6 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
       note: _note.text.trim(),
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
-      tagIds: _tagIds.toList(growable: false),
     );
     try {
       await controller.saveEntry(entry);
@@ -408,70 +405,6 @@ class _TimeEntryEditorState extends State<TimeEntryEditor> {
                     prefixIcon: Icons.notes_rounded,
                     maxLines: 3,
                   ),
-                  const SizedBox(height: TimiqSpace.lg),
-                  Text('ŠTÍTKY',
-                      style: Theme.of(context).textTheme.labelMedium),
-                  const SizedBox(height: TimiqSpace.xs),
-                  if (controller.tags.isEmpty)
-                    Text(
-                      'Štítky lze vytvořit v sekci Já.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: context.timiq.muted),
-                    )
-                  else
-                    Wrap(
-                      spacing: TimiqSpace.xs,
-                      runSpacing: TimiqSpace.xs,
-                      children: controller.tags.map((tag) {
-                        final selected = _tagIds.contains(tag.id);
-                        return Material(
-                          color: selected
-                              ? context.timiq.primary.withValues(alpha: 0.16)
-                              : context.timiq.elevated,
-                          borderRadius:
-                              BorderRadius.circular(TimiqRadius.pill),
-                          child: InkWell(
-                            borderRadius:
-                                BorderRadius.circular(TimiqRadius.pill),
-                            onTap: () => setState(() {
-                              if (selected) {
-                                _tagIds.remove(tag.id);
-                              } else {
-                                _tagIds.add(tag.id);
-                              }
-                            }),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 9,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius:
-                                    BorderRadius.circular(TimiqRadius.pill),
-                                border: Border.all(
-                                  color: selected
-                                      ? context.timiq.primary
-                                      : context.timiq.border,
-                                ),
-                              ),
-                              child: Text(
-                                '#${tag.name}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
-                                    ?.copyWith(
-                                      color: selected
-                                          ? context.timiq.primaryGlow
-                                          : context.timiq.muted,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(growable: false),
-                    ),
                 ],
               ),
             ),

@@ -92,7 +92,7 @@ class _TimiqNavigation extends StatelessWidget {
     (icon: Icons.bolt_rounded, label: 'Dnes'),
     (icon: Icons.view_timeline_outlined, label: 'Historie'),
     (icon: Icons.donut_large_outlined, label: 'Statistiky'),
-    (icon: Icons.person_outline_rounded, label: 'Já'),
+    (icon: Icons.settings_outlined, label: 'Nastavení'),
   ];
 
   @override

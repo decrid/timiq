@@ -17,6 +17,15 @@ class _FailingPlatformBridge extends NoopPlatformBridge {
   }
 }
 
+class _RecordingPlatformBridge extends NoopPlatformBridge {
+  bool resetCalled = false;
+
+  @override
+  Future<void> resetPlatform() async {
+    resetCalled = true;
+  }
+}
+
 void main() {
   test('start, switch and stop preserve one timer and exact boundary', () async {
     var now = DateTime(2026, 7, 19, 8);
@@ -134,7 +143,7 @@ void main() {
     repository.categories.add(
       TimiqCategory(
         id: 'category',
-        name: 'PrĂˇce',
+        name: 'Práce',
         colorValue: Colors.blue.toARGB32(),
         iconCodePoint: Icons.work.codePoint,
         sortOrder: 0,
@@ -147,7 +156,7 @@ void main() {
       TimiqActivity(
         id: 'activity',
         categoryId: 'category',
-        name: 'VĂ˝voj',
+        name: 'Vývoj',
         iconCodePoint: Icons.code.codePoint,
         isFavorite: false,
         sortOrder: 0,
@@ -177,6 +186,62 @@ void main() {
       throwsA(isA<TimiqValidationException>()),
     );
     expect(repository.entries, isEmpty);
+  });
+
+  test('application reset clears entities and returns to onboarding', () async {
+    final now = DateTime(2026, 7, 19, 12);
+    final repository = MemoryTimiqRepository();
+    final bridge = _RecordingPlatformBridge();
+    repository.settings = const AppSettings(onboardingCompleted: true);
+    repository.categories.add(
+      TimiqCategory(
+        id: 'category',
+        name: 'Práce',
+        colorValue: Colors.blue.toARGB32(),
+        iconCodePoint: Icons.work.codePoint,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    repository.activities.add(
+      TimiqActivity(
+        id: 'activity',
+        categoryId: 'category',
+        name: 'Vývoj',
+        iconCodePoint: Icons.code.codePoint,
+        isFavorite: true,
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    repository.entries.add(
+      TimeEntry(
+        id: 'entry',
+        activityId: 'activity',
+        startTime: now.subtract(const Duration(hours: 1)),
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    final controller = TimiqController(
+      repository: repository,
+      platformBridge: bridge,
+      clock: () => now,
+    );
+    await controller.initialize();
+
+    await controller.resetApplication();
+
+    expect(repository.categories, isEmpty);
+    expect(repository.activities, isEmpty);
+    expect(repository.entries, isEmpty);
+    expect(controller.settings.onboardingCompleted, isFalse);
+    expect(controller.activeEntry, isNull);
+    expect(bridge.resetCalled, isTrue);
   });
 
   test('today breakdown includes an archived activity', () async {

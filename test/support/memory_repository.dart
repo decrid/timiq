@@ -14,13 +14,15 @@ class NoopPlatformBridge extends PlatformBridge {
     required EntryDetails? active,
     required List<ActivityDetails> favorites,
   }) async {}
+
+  @override
+  Future<void> resetPlatform() async {}
 }
 
 class MemoryTimiqRepository implements TimiqRepository {
   final List<TimiqCategory> categories = <TimiqCategory>[];
   final List<TimiqActivity> activities = <TimiqActivity>[];
   final List<TimeEntry> entries = <TimeEntry>[];
-  final List<TimiqTag> tags = <TimiqTag>[];
   AppSettings settings = const AppSettings(onboardingCompleted: true);
 
   @override
@@ -41,9 +43,6 @@ class MemoryTimiqRepository implements TimiqRepository {
       activities
           .where((item) => includeArchived || !item.isArchived)
           .toList(growable: false);
-
-  @override
-  Future<List<TimiqTag>> loadTags() async => List<TimiqTag>.of(tags);
 
   @override
   Future<TimeEntry?> loadActiveEntry() async {
@@ -118,17 +117,6 @@ class MemoryTimiqRepository implements TimiqRepository {
   }
 
   @override
-  Future<void> saveTag(TimiqTag tag) async {
-    tags.removeWhere((item) => item.id == tag.id);
-    tags.add(tag);
-  }
-
-  @override
-  Future<void> deleteTag(String id) async {
-    tags.removeWhere((item) => item.id == id);
-  }
-
-  @override
   Future<TimeEntry> startActivity(String activityId, DateTime at) async {
     if (entries.any((item) => item.endTime == null)) {
       throw const TimiqValidationException('Timer už běží.');
@@ -193,12 +181,18 @@ class MemoryTimiqRepository implements TimiqRepository {
   }
 
   @override
+  Future<void> resetAll() async {
+    entries.clear();
+    activities.clear();
+    categories.clear();
+    settings = const AppSettings(onboardingCompleted: false);
+  }
+
+  @override
   Future<Map<String, Object?>> exportAll() async => <String, Object?>{
         'categories': <Object?>[],
         'activities': <Object?>[],
         'timeEntries': <Object?>[],
-        'tags': <Object?>[],
-        'timeEntryTags': <Object?>[],
         'settings': <Object?>[],
       };
 }

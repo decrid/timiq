@@ -322,15 +322,10 @@ class _EntryTile extends StatelessWidget {
                               .bodySmall
                               ?.copyWith(color: details.color),
                         ),
-                        if (details.entry.note.isNotEmpty ||
-                            details.tags.isNotEmpty) ...<Widget>[
+                        if (details.entry.note.isNotEmpty) ...<Widget>[
                           const SizedBox(height: 6),
                           Text(
-                            <String>[
-                              if (details.entry.note.isNotEmpty)
-                                details.entry.note,
-                              ...details.tags.map((tag) => '#${tag.name}'),
-                            ].join(' · '),
+                            details.entry.note,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall,
